@@ -73,6 +73,10 @@ init -990 python in live_studio:
                 "snap_enabled": SNAP_ENABLED,
                 "grid_enabled": GRID_ENABLED,
                 "grid_size": GRID_SIZE,
+                "guides_enabled": GUIDES_ENABLED,
+                "show_all_bounds": SHOW_ALL_BOUNDS,
+                "asset_browser_mode": "tree",
+                "layer_panel_mode": "Scene",
             },
         }
 
@@ -160,6 +164,7 @@ init -990 python in live_studio:
             "editability": "editable" if widget_id else "inspect",
             "properties": {},
             "resolved_properties": {},
+            "binding": {"mode": "literal", "expression": "", "source_expression": "", "preview": ""},
             "bounds": None,
             "actions": [],
             "children": [],

@@ -197,6 +197,12 @@ init -970 python in live_studio:
         return "Layer: {}".format(layer)
 
     def capture_scene_state():
+        """Captures visual scene objects only.
+
+        UI layers are handled by LiveStudio_ui.rpy. A scene is created lazily
+        only after at least one non-screen displayable is found, preventing
+        empty ``Layer: transient/screens/overlay/top`` entries in the tree.
+        """
         result = []
         by_name = {}
         scene_list = scene_lists()
@@ -206,25 +212,16 @@ init -970 python in live_studio:
             return result
 
         for layer_index, layer in enumerate(runtime_layer_names(scene_list)):
-            if layer in EXCLUDED_SCENE_LAYERS:
+            if layer in EXCLUDED_SCENE_LAYERS or layer in UI_LAYERS:
                 continue
-            # Ignore Live Studio's own layers if a project retained them.
             if str(layer).startswith("live_studio"):
                 continue
-            group_name = scene_group_for_layer(layer)
-            scene = by_name.get(group_name)
-            if scene is None:
-                scene_type = "dialogue" if "dialogue" in group_name.lower() else "scene"
-                scene = new_scene(group_name, [], scene_type)
-                by_name[group_name] = scene
-                result.append(scene)
-            if layer not in scene["source_layers"]:
-                scene["source_layers"].append(layer)
-
             try:
                 entries = list(scene_list.layers.get(layer, [])) if isinstance(scene_list.layers, dict) else list(scene_list.layers[layer])
             except Exception:
                 entries = []
+
+            captured = []
             for index, entry in enumerate(entries):
                 tag = entry_tag(entry)
                 if not tag:
@@ -235,16 +232,32 @@ init -970 python in live_studio:
                     displayable = None
                 if displayable is None:
                     continue
-                # UI screens are handled by LiveStudio_ui.rpy.
                 try:
                     from renpy.display.screen import ScreenDisplayable
                     if isinstance(displayable, ScreenDisplayable):
                         continue
                 except Exception:
                     pass
+
                 image_name = displayable_image_name(displayable)
                 properties = placement_properties(displayable)
                 width, height = displayable_size(displayable)
+                captured.append((index, entry, tag, displayable, image_name, properties, width, height))
+
+            if not captured:
+                continue
+
+            group_name = scene_group_for_layer(layer)
+            scene = by_name.get(group_name)
+            if scene is None:
+                scene_type = "dialogue" if "dialogue" in group_name.lower() else "scene"
+                scene = new_scene(group_name, [], scene_type)
+                by_name[group_name] = scene
+                result.append(scene)
+            if layer not in scene["source_layers"]:
+                scene["source_layers"].append(layer)
+
+            for index, entry, tag, displayable, image_name, properties, width, height in captured:
                 node = new_scene_node(
                     image_name or tag,
                     "image" if image_name else "displayable",
@@ -259,6 +272,7 @@ init -970 python in live_studio:
                         "tag": tag,
                         "runtime_type": displayable.__class__.__name__,
                         "captured_by": "runtime",
+                        "base_properties": clone(properties),
                     },
                     editability="editable" if image_name else "inspect",
                 )

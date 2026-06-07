@@ -1,12 +1,22 @@
-# Migration from the original SceneEditor
+# Migration / update instructions — v3.2
 
-## 1. Back up the project
+## Replace, do not merge
 
-Make a copy or Git commit before replacing the old editor.
+Delete the previous `RenPyLiveStudio` directory and replace it with this complete folder. Do not merge individual files from v3.1 and v3.2.
 
-## 2. Disable the original files
+After replacement, fully close and relaunch the project from the Ren'Py SDK. Autoreload can retain old displayable classes, keymap actions, and runtime caches.
 
-Rename these files so they no longer end in `.rpy`, or move them outside `game/`:
+## Recommended location
+
+```text
+your-project/game/DevTools/RenPyLiveStudio/
+```
+
+The folder may also be directly under `game/`, but use one location only.
+
+## Disable the original editor
+
+Rename or move these old files so they no longer end in `.rpy`:
 
 ```text
 SceneEditor.rpy
@@ -16,60 +26,41 @@ SceneEditor_image_browser.rpy
 SceneEditor_action_core.rpy
 ```
 
-Do not load the old and new editors together. They use different project models, shortcuts, state, and capture lifecycles.
+Do not load the old and new editors together.
 
-## 3. Install Live Studio
+## Existing Live Studio projects
 
-Copy the final `RenPyLiveStudio` directory into:
+v3/v3.1 JSON projects remain loadable. Migration now:
 
-```text
-your-project/game/RenPyLiveStudio/
-```
+- upgrades the project model to version 7;
+- removes empty `Layer: transient`, `Layer: screens`, `Layer: overlay`, and `Layer: top` scenes;
+- marks anonymous runtime custom/transform wrappers as internal;
+- adds dynamic text binding/source fields;
+- preserves inherited frames, dialogue queues, and managed screens.
 
-Launch the game normally from the Ren'Py SDK Launcher. Press **Shift+L** during a scene.
+The same migration is applied to an in-memory project retained by autoreload.
 
-## 4. First tests
+## First test checklist
 
-Test in a copy of the project:
+1. Launch normally from the SDK and press **Shift+L**.
+2. Confirm the Scene tree contains actual scene groups only.
+3. Switch to UI and expand the HUD screen; verify frames/text/buttons are nested.
+4. Confirm anonymous `Custom` rows are absent or limited to genuinely named custom widgets.
+5. With **Select**, drag a scene image and verify the image—not only its outline—moves.
+6. Drag a captured UI widget that has an ID and verify the isolated screen preview moves.
+7. Convert an unnamed/limited screen to a managed copy and drag its children.
+8. Test edge resize and rotate handles.
+9. Select dynamic HUD text and verify the Inspector shows the current preview plus its saved value/expression.
+10. Browse assets using the folder tree and search.
+11. Create an inherited next frame and confirm unchanged content remains inherited.
+12. Save/reload the Live Studio project.
+13. Review all three Script outputs.
+14. Run **Ren'Py Launcher → Lint**.
 
-1. Open during normal dialogue.
-2. Open while a choice menu is visible.
-3. Open during exploration with HUD and clickable buttons.
-4. Switch between Exact and Editable previews.
-5. Select nested UI children in the hierarchy.
-6. Convert a captured screen to a managed copy.
-7. Add a Say UI and Choice UI template.
-8. Create an inherited next frame and change only one image/dialogue event.
-9. Add a choice and target branch frames.
-10. Review all three Export sections.
-11. Save and reload the Live Studio JSON project.
-12. Run **Ren'Py Launcher → Lint**.
+## Export safety
 
-## 5. Project data
+The default Script workspace only generates previews and clipboard content. **Export Files** is explicit. Handwritten-file patching and editor-owned block replacement are still experimental and disabled.
 
-Live Studio saves editor projects under:
+## Shipping
 
-```text
-game/live_studio_projects/
-```
-
-It does not automatically migrate the old ActionEditor/SceneEditor persistent state. Capture the running scene again or start a blank Live Studio project.
-
-## 6. Export safety
-
-The default Export workspace only generates previews and copies text.
-
-- **Export Files** is explicit and writes a new timestamped directory.
-- Editor-owned block replacement is experimental and disabled.
-- Handwritten-file patching is experimental and disabled.
-- Both experimental paths create backup files when enabled.
-
-## 7. Shipping
-
-Before distributing a game, remove the Live Studio folder or set:
-
-```python
-ENABLED = False
-```
-
-in `LiveStudio_config.rpy`.
+Remove the tool folder or set `ENABLED = False` in `LiveStudio_config.rpy` before distribution.

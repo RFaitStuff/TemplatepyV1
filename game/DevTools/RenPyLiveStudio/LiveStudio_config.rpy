@@ -5,7 +5,7 @@ init -1000 python in live_studio:
     from collections import OrderedDict
     from renpy.store import config
 
-    VERSION = 3
+    VERSION = 7
     TOOL_NAME = "Ren'Py Live Studio"
     MIN_RENPY_VERSION = (8, 5, 3)
 
@@ -22,7 +22,7 @@ init -1000 python in live_studio:
     EXPERIMENTAL_REPLACE_BLOCKS = False
     EXPERIMENTAL_PATCH_FILES = False
 
-    DEFAULT_PREVIEW_MODE = "layout"
+    DEFAULT_PREVIEW_MODE = "capture"
     DEFAULT_NEW_FRAME_MODE = "inherit"
 
     # A project may override this mapping from a later init block. Each entry
@@ -33,25 +33,29 @@ init -1000 python in live_studio:
         ("Effects", ("effects",)),
     ])
 
-    UI_LAYERS = ("screens", "overlay", "transient")
-    # ScreenDisplayable objects are separated into the UI tree. Other loose
-    # displayables on UI/top layers are still captured so nothing visual is lost.
-    EXCLUDED_SCENE_LAYERS = ()
+    UI_LAYERS = ("screens", "overlay", "transient", "top")
+    # UI-only runtime layers are captured exclusively by the UI subsystem.
+    # They are deliberately omitted from the Scene tree and Scene layers panel.
+    EXCLUDED_SCENE_LAYERS = UI_LAYERS
 
     UI_CAPTURE_MAX_DEPTH = 32
-    UI_CAPTURE_MAX_NODES = 1600
+    UI_CAPTURE_MAX_NODES = 900
 
     # Responsive editor dimensions.
     LEFT_PANEL_MIN = 280
-    LEFT_PANEL_MAX = 380
-    LEFT_PANEL_RATIO = 0.20
-    RIGHT_PANEL_MIN = 270
-    RIGHT_PANEL_MAX = 360
+    LEFT_PANEL_MAX = 330
+    LEFT_PANEL_RATIO = 0.18
+    RIGHT_PANEL_MIN = 285
+    RIGHT_PANEL_MAX = 340
     RIGHT_PANEL_RATIO = 0.18
-    TOP_BAR_HEIGHT = 48
-    BOTTOM_PANEL_MIN = 230
-    BOTTOM_PANEL_MAX = 390
-    BOTTOM_PANEL_RATIO = 0.30
+    BOTTOM_TOOLS_MIN = 430
+    BOTTOM_TOOLS_MAX = 560
+    BOTTOM_TOOLS_RATIO = 0.29
+    TOP_BAR_HEIGHT = 42
+    FRAME_NAV_HEIGHT = 38
+    BOTTOM_PANEL_MIN = 270
+    BOTTOM_PANEL_MAX = 340
+    BOTTOM_PANEL_RATIO = 0.31
 
     CANVAS_PADDING = 10
     CANVAS_BACKGROUND = "#0b111b"
@@ -64,12 +68,29 @@ init -1000 python in live_studio:
     WARNING_COLOR = "#ffca6b"
     ERROR_COLOR = "#ff7d8a"
     SELECTION_COLOR = "#d8c2ff"
-    GUIDE_COLOR = "#68d5ff88"
+    GUIDE_COLOR = "#39ff7a88"
 
-    GRID_ENABLED = True
+    GRID_ENABLED = False
     GRID_SIZE = 16
     SNAP_ENABLED = True
     SNAP_DISTANCE = 8
+    GUIDES_ENABLED = True
+    SHOW_ALL_BOUNDS = False
+
+    CANVAS_ZOOM_MIN = 0.35
+    CANVAS_ZOOM_MAX = 2.50
+    CANVAS_ZOOM_STEP = 0.10
+
+    ASSET_PAGE_SIZE = 36
+
+    # Compact editor chrome. These values are also used by custom scrollbar
+    # styles in LiveStudio_screens.rpy.
+    SCROLLBAR_WIDTH = 4
+    ASSET_TREE_WIDTH = 210
+    LAYER_THUMB_WIDTH = 58
+    LAYER_THUMB_HEIGHT = 38
+    ASSET_THUMB_WIDTH = 132
+    ASSET_THUMB_HEIGHT = 82
 
     # Export previews are always generated in memory first. No files are
     # written until the explicit Export Files action is used.
@@ -80,13 +101,15 @@ init -1000 python in live_studio:
     )
 
     SCENE_PROPERTY_GROUPS = (
-        ("Transform", (
+        ("Position", (
             ("X", "properties.xpos"),
             ("Y", "properties.ypos"),
-            ("X Anchor", "properties.xanchor"),
-            ("Y Anchor", "properties.yanchor"),
             ("X Offset", "properties.xoffset"),
             ("Y Offset", "properties.yoffset"),
+            ("X Anchor", "properties.xanchor"),
+            ("Y Anchor", "properties.yanchor"),
+        )),
+        ("Size & Transform", (
             ("Width", "properties.xsize"),
             ("Height", "properties.ysize"),
             ("X Zoom", "properties.xzoom"),
@@ -102,16 +125,23 @@ init -1000 python in live_studio:
     )
 
     UI_PROPERTY_GROUPS = (
-        ("Layout", (
+        ("Position", (
             ("X", "properties.xpos"),
             ("Y", "properties.ypos"),
-            ("Width", "properties.xsize"),
-            ("Height", "properties.ysize"),
-            ("X Anchor", "properties.xanchor"),
-            ("Y Anchor", "properties.yanchor"),
             ("X Offset", "properties.xoffset"),
             ("Y Offset", "properties.yoffset"),
+            ("X Align", "properties.xalign"),
+            ("Y Align", "properties.yalign"),
+            ("X Anchor", "properties.xanchor"),
+            ("Y Anchor", "properties.yanchor"),
+        )),
+        ("Size & Layout", (
+            ("Width", "properties.xsize"),
+            ("Height", "properties.ysize"),
+            ("X Fill", "properties.xfill"),
+            ("Y Fill", "properties.yfill"),
             ("Spacing", "properties.spacing"),
+            ("Padding", "properties.padding"),
         )),
         ("Appearance", (
             ("Alpha", "properties.alpha"),
@@ -133,7 +163,9 @@ init -1000 python in live_studio:
 
     TEXT_PROPERTY_GROUPS = (
         ("Text", (
-            ("Text", "properties.text"),
+            ("Text / Preview", "properties.text"),
+            ("Value / Expression", "binding.expression"),
+            ("Text Source", "binding.mode"),
             ("Size", "properties.size"),
             ("Color", "properties.color"),
             ("Text Align", "properties.text_align"),

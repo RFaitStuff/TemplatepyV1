@@ -232,8 +232,21 @@ init -870 python in live_studio:
                     lines.append("{}{} {}".format(indent, key, format_value(props.get(key))))
         return lines
 
+    def _text_source_expression(node, fallback="Text"):
+        props = node.get("properties", {}) or {}
+        binding = node.get("binding")
+        if isinstance(binding, dict):
+            mode = str(binding.get("mode") or "literal").lower()
+            expression = str(binding.get("expression") or "").strip()
+            if mode in ("expression", "runtime", "renpy_text") and expression:
+                return expression, True
+            preview = binding.get("preview")
+            if preview not in (None, ""):
+                return quote_renpy_string(preview), False
+        return quote_renpy_string(props.get("text", node.get("text", node.get("name", fallback)))), False
+
     def emit_ui_node(node, indent="    ", context=None):
-        if not node.get("visible", True):
+        if not node.get("visible", True) or node.get("internal"):
             return []
         context = context if context is not None else {}
         lines = []
@@ -270,14 +283,17 @@ init -870 python in live_studio:
         image_button = node_type == "imagebutton"
 
         if node_type == "text":
-            binding = str(node.get("binding") or props.get("binding") or widget_id).lower().split(".")[-1]
-            if role == "say" and binding in ("who", "what"):
-                context["say_{}_emitted".format(binding)] = True
-                lines.append('{}text ({} or ""):'.format(indent, binding))
+            binding_value = node.get("binding") or props.get("binding") or widget_id
+            binding_name = str(binding_value).lower().split(".")[-1] if not isinstance(binding_value, dict) else str(widget_id).lower().split(".")[-1]
+            if role == "say" and binding_name in ("who", "what"):
+                context["say_{}_emitted".format(binding_name)] = True
+                lines.append('{}text ({} or ""):'.format(indent, binding_name))
             else:
-                lines.append("{}text {}:".format(indent, quote_renpy_string(props.get("text", node.get("name", "Text")))))
+                text_source, _dynamic = _text_source_expression(node, "Text")
+                lines.append("{}text {}:".format(indent, text_source))
         elif text_button:
-            lines.append("{}textbutton {}:".format(indent, quote_renpy_string(props.get("text", node.get("name", "Button")))))
+            text_source, _dynamic = _text_source_expression(node, "Button")
+            lines.append("{}textbutton {}:".format(indent, text_source))
         elif generic_button:
             lines.append("{}button:".format(indent))
         elif image_button:
@@ -834,6 +850,13 @@ init -870 python in live_studio:
                     if widget_id in widget_ids:
                         errors.append("Managed screen '{}' contains duplicate widget id '{}'".format(screen_name, widget_id))
                     widget_ids.add(widget_id)
+                    binding = node.get("binding")
+                    if str(node.get("type") or "").lower() == "text" and isinstance(binding, dict) and str(binding.get("mode") or "literal").lower() in ("expression", "runtime", "renpy_text"):
+                        expression = str(binding.get("expression") or "").strip()
+                        if not expression:
+                            errors.append("Managed screen '{}' has dynamic text '{}' without an expression; set its Value / Expression before export".format(screen_name, node.get("name", widget_id)))
+                        else:
+                            _validate_python_source(expression, "eval", "{} / {} text expression".format(frame.get("name", frame_id), screen_name), errors)
                     for action_index, action in enumerate(node.get("actions", []) or []):
                         _validate_action_model(action, "{} / {} button {}".format(frame.get("name", frame_id), screen_name, action_index + 1), errors, warnings)
 

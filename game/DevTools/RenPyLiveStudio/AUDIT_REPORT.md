@@ -1,72 +1,72 @@
-# Architecture and compatibility audit
+# Architecture and compatibility audit — v3.2
 
-## Final architecture
+## Main architecture
 
-The main build contains 13 `.rpy` files. Responsibilities are grouped without splitting every small class into its own file:
+The build remains at 13 primary `.rpy` files. Animation is isolated and disabled.
 
 ```text
-LiveStudio_config.rpy       configuration and compatibility boundary
-LiveStudio_models.rpy       JSON-safe Project/Frame/Scene/UI/Dialogue models
-LiveStudio_project.rpy      inheritance resolver, operations, history, save/load
-LiveStudio_scene.rpy        scene-list capture and scene object editing
-LiveStudio_ui.rpy           screen/widget capture, managed UI, button actions
-LiveStudio_dialogue.rpy     scene-owned dialogue and menu logic
-LiveStudio_capture.rpy      non-destructive runtime capture lifecycle
-LiveStudio_flow.rpy         frame graph and conservative source-AST preview
-LiveStudio_export.rpy       generated code, validators, copy/export, experiments
-LiveStudio_assets.rpy       image/audio browser index
-LiveStudio_canvas.rpy       preview, hierarchy bounds, hit testing, transforms
-LiveStudio_screens.rpy      editor shell and panels
+LiveStudio_config.rpy       configuration and property definitions
+LiveStudio_models.rpy       JSON-safe project data
+LiveStudio_project.rpy      inheritance, commands, caches, history, save/load
+LiveStudio_scene.rpy        scene-list capture and scene editing
+LiveStudio_ui.rpy           screen/widget hierarchy, values, managed UI/actions
+LiveStudio_dialogue.rpy     scene-owned dialogue and choices
+LiveStudio_capture.rpy      non-destructive runtime capture
+LiveStudio_flow.rpy         frame graph and conservative source preview
+LiveStudio_export.rpy       generated code, validator, copy/export
+LiveStudio_assets.rpy       source-folder asset tree and thumbnails
+LiveStudio_canvas.rpy       visual preview, hit testing, direct manipulation
+LiveStudio_screens.rpy      original-inspired editor shell
 LiveStudio_bootstrap.rpy    shortcut and context-safe startup
 ```
 
-Animation is isolated under `optional/animation/` and disabled.
+## Scene and UI boundary
 
-## ActionEditor3 boundary
+Scene capture ignores UI-only Ren'Py layers and skips `ScreenDisplayable` objects. UI capture separately finds active screens and recursively records their screen/container/widget hierarchy. This prevents fake empty Scene containers while keeping the UI available under its own tree and layer mode.
 
-ActionEditor3 is an animation/transform editor whose scene number and timeline are built around keyframes. Live Studio uses only the proven architectural idea of reading Ren'Py scene lists and opening a tool in a separate context.
+## Connected UI model
 
-Live Studio Frames are story-state nodes. Animation code is not included in the main build and does not control the project model.
+A UI Screen owns root nodes. Containers own children. Anonymous engine wrappers are flattened only when they do not carry an ID, action, or meaningful standalone content. Meaningful frames, text, buttons, images, and containers remain connected.
 
-## Runtime capture lifecycle
+Naming priority is:
 
-1. Shift+L records the original game source reference and exact screenshot.
-2. A new Python context is created with `_clear_layers=False`.
-3. The copied scene lists are inspected without calling `renpy.scene()` on the game.
-4. Images and loose displayables become Scene nodes.
-5. Active `ScreenDisplayable` instances become runtime-only Screen records.
-6. Their root children are recursively traversed into a widget hierarchy.
-7. Live displayable references remain in the temporary runtime cache only.
-8. The modal editor covers the game.
-9. Closing the editor discards the tool context and returns to the untouched game context.
+1. explicit screen-language widget ID;
+2. text source expression or visible text;
+3. image name;
+4. child label for frames/buttons;
+5. runtime type as a final diagnostic fallback.
 
-## UI editability levels
+## Dynamic text model
 
-- **Editable:** stable widget ID and supported managed type.
-- **Limited:** some properties/actions can be recovered, but not the full source meaning.
-- **Inspect:** visible hierarchy/bounds only.
+Text nodes carry a binding record:
 
-Captured screens can be converted into managed copies. The converter creates unique widget IDs and preserves supported hierarchy, properties, and structured actions.
+```text
+mode
+expression
+source_expression
+preview
+```
 
-## Frame inheritance
+`preview` is what was visible during capture. `source_expression` is the original screen-language expression where available. Export uses the expression for dynamic text and the literal preview only for literal text.
 
-An inherited Frame stores operations rather than duplicating the complete visual state:
+## Direct manipulation
 
-- `sets` — local property changes.
-- `adds` — new scenes, nodes, screens, controllers, or events.
-- `removes` — hidden/removed inherited objects.
-- `reorders` — local ordering changes.
+The canvas uses one persistent displayable. During drag, a transient property overlay is applied to the selected resolved node. It does not mutate project data until mouse-up.
 
-Resolution recursively combines the parent state with the local operations. Blank and Detached frames are explicit alternatives.
+- Scene images are rebuilt in the editable layout using the transient transform.
+- Managed UI is laid out from its parent hierarchy.
+- Captured UI widgets with IDs are rebuilt through screen widget-property overrides.
+- Selection, bounds, and the actual editable visual consume the same transient values.
 
-## Dialogue separation
+## Performance changes
 
-The Dialogue object belongs to a Scene and contains reusable events. Each Frame stores an ordered event queue with multiple commands and at most one interaction.
+The expensive path in earlier builds was repeated deep copying and screen reconstruction from ordinary screen expressions and input callbacks. v3.2 separates caches for resolved frame state, flattened canvas items, measured bounds, widget overrides, screen previews, semantic displayables, layer thumbnails, asset rows, and asset thumbnails.
 
-Say and Choice screens remain UI definitions. A Choice interaction may include an optional speaker/narration prompt and choices in the same Ren'Py menu interaction.
+Property fields update the current cached resolved state during typing. Descendant frame caches are discarded when the field edit is committed. This keeps inherited correctness while avoiding a complete 900-node tree clone for every character.
 
-## Export policy
+## Limitations retained deliberately
 
-Default behavior is preview/copy only. File output requires an explicit button and creates new timestamped files. Existing-source modifications remain experimental.
-
-The validator checks the editor model before output, but raw Ren'Py statements and arbitrary custom displayables still require SDK lint/runtime testing.
+- A captured widget without a stable ID cannot reliably receive a Ren'Py widget override.
+- Runtime evaluation does not preserve every original loop, `if`, `use`, Python closure, or custom displayable constructor.
+- Converting to a managed copy is the dependable no-code path for full editing/export.
+- Handwritten-source patching and editor-block replacement remain experimental.

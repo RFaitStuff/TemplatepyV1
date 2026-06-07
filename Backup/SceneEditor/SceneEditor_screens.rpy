@@ -1657,7 +1657,7 @@ init -896:
     style scene_editor_asset_tile_button is button
     style scene_editor_asset_tile_button idle_background None
     style scene_editor_asset_tile_button hover_background _viewers.scene_editor_asset_tile_hover_background
-    style scene_editor_asset_tile_button insensitive_background None
+    # style scene_editor_asset_tile_button insensitive_background None
     style scene_editor_asset_tile_button padding (4, 4)
     style scene_editor_asset_tile_button xpadding 4
     style scene_editor_asset_tile_button ypadding 4

@@ -363,7 +363,10 @@ init -10 python:
 
         outfits = sorted({entry[0] for entry in entries if entry[0]})
         emotions = sorted({entry[1] for entry in entries if entry[1]})
-        combinations = sorted({(entry[0], entry[1]) for entry in entries if entry[0] or entry[1]})
+        combinations = sorted(
+            {(entry[0], entry[1]) for entry in entries if entry[0] or entry[1]},
+            key=lambda pair: (pair[0] or "", pair[1] or ""),
+        )
 
         # Explicit emotion keeps the current outfit automatic.
         for emotion in emotions:
@@ -438,7 +441,10 @@ init 1 python:
 
             _outfits = sorted({entry[0] for entry in _entries if entry[0]})
             _emotions = sorted({entry[1] for entry in _entries if entry[1]})
-            _combinations = sorted({(entry[0], entry[1]) for entry in _entries if entry[0] or entry[1]})
+            _combinations = sorted(
+                {(entry[0], entry[1]) for entry in _entries if entry[0] or entry[1]},
+                key=lambda pair: (pair[0] or "", pair[1] or ""),
+            )
 
             for _emotion in _emotions:
                 _register_image_if_missing(

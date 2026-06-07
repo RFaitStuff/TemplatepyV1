@@ -1,17 +1,15 @@
-# Ren'Py Live Studio — Visual Engine Build v3
+# Ren'Py Live Studio — Visual Engine v3.2
 
-Ren'Py Live Studio is an in-game visual authoring tool for Ren'Py. It captures the current running game, opens a modal editor over it, and lets you build story frames, scene visuals, UI screens, dialogue, choices, button behavior, and flow without manually writing the initial Ren'Py code.
+Ren'Py Live Studio is an in-game visual authoring tool for Ren'Py. It captures the current running game, opens a modal editor over it, and lets you create inherited story frames, scene visuals, UI screens, dialogue, choices, button behavior, and flow without having to hand-write the initial Ren'Py script.
 
 ## Start it
 
-1. Copy the `RenPyLiveStudio` folder into your project's `game/` directory.
+1. Replace the previous `RenPyLiveStudio` folder with this complete folder.
 2. Launch the project normally from the Ren'Py SDK Launcher.
 3. Reach the scene you want to edit.
 4. Press **Shift+L**.
 
-No manual `config.developer = True` setting is required. Live Studio is enabled by its own `ENABLED` setting in `LiveStudio_config.rpy`.
-
-Disable `ENABLED` or remove the folder before shipping a public build.
+No manual `config.developer = True` line is required. Disable `ENABLED` in `LiveStudio_config.rpy`, or remove the folder, before shipping a public build.
 
 ## Project model
 
@@ -21,80 +19,125 @@ Project
     ├── Scenes
     │   ├── Master / Exploration
     │   ├── Dialogue
-    │   └── Effects / custom layer scenes
+    │   └── Effects / custom scene layers
     ├── Dialogue object
     └── UI screens
 ```
 
-A Frame is a story/game state, not an animation timestamp. New frames inherit the previous frame and store only local changes unless Blank or Detached is selected.
+A Frame is a story state, not an animation timestamp. The normal **Next Frame** operation inherits the current frame and stores only local differences.
 
-The Dialogue object belongs to a Scene. It stores ordered commands plus one main interaction for the frame. Say and Choice screens are separate UI templates that control appearance.
+The Dialogue object belongs to a Scene. It stores ordered commands and the current interaction. Say and Choice screens are separate UI definitions that control appearance.
 
-## Editor layout
+## v3.2 editor layout
 
-- **Top:** project, frame navigation, undo/redo, preview, save, and export tools.
-- **Left upper:** context-sensitive Inspector.
-- **Left lower:** frame hierarchy split into Scene and UI.
-- **Center:** visual canvas with selection, move, resize, rotate, snapping, and exact/editable preview modes.
-- **Bottom:** Assets, Dialogue, Next Source, Export, and Diagnostics workspaces.
-- **Right:** creation, selection, and frame tools.
+The shell follows the original editor's information hierarchy while supporting the newer frame/UI/dialogue model:
 
-## Main features
+- **Top:** zoom, snap, save, project, preview, script, settings, and close.
+- **Left upper:** context-sensitive Properties with compact editable text boxes.
+- **Left lower:** current-frame hierarchy split between Scene and UI.
+- **Center:** the dominant photo-editor-style canvas.
+- **Below canvas:** inherited-frame navigation.
+- **Right:** Scene Layers or UI Layers with hierarchy, thumbnails, visibility, and lock state; Structure, History, and Debug remain tabbed.
+- **Bottom:** Unity-style project asset tree plus asset tiles, or the Dialogue/Script workspace.
+- **Bottom right:** compact selection, creation, ordering, and frame tools.
 
-- Non-destructive capture of the active scene lists and screens.
-- Exact pre-editor screenshot fallback.
-- Scene image capture by Ren'Py layer.
-- Active screen and recursive widget-tree inspection.
-- Widget IDs and properties where Ren'Py exposes them.
-- Inspect-only fallback for unnamed or unsupported runtime children.
-- Conversion of captured screens into managed editor-owned copies.
-- Ready-made managed Say UI and Choice UI templates.
-- Managed text, images, buttons, image buttons, frames, and containers.
-- Structured button actions and visual frame destinations.
-- Inherited frames, branches, blank frames, and detached snapshots.
-- Scene-owned dialogue with say, narration, menu prompts, choices, Python commands, raw Ren'Py statements, images, screens, transitions, audio, pause, jump, call, and return events.
-- Conservative inspection of likely next Ren'Py dialogue/menu/pause states from the current AST.
-- Choice imports create inherited branch-frame placeholders.
-- Separate generated previews for `story.rpy`, `screens.rpy`, and `live_studio_helpers.rpy`.
-- Copy-first export. Nothing is written until **Export Files** is pressed.
-- Project JSON save/load.
-- Experimental editor-owned block replacement and handwritten-file patching remain disabled by default.
+All editor scrollbars use a narrow four-pixel style.
 
-## UI compatibility model
+## v3.2 fixes
 
-Existing handwritten screens are captured as runtime screens. Live Studio attempts to show their real visuals and hierarchy while keeping their runtime objects temporary.
+### Direct scene and UI manipulation
 
-- Widgets with stable screen-language `id` values can expose editable properties.
-- Unnamed children remain inspect-only or limited.
-- **Convert to Managed Copy** creates an editor-owned screen that can be exported.
-- Arbitrary loops, conditions, `use` statements, Python-created displayables, and custom actions cannot always be reconstructed from the evaluated runtime tree. Live Studio does not pretend those are perfectly editable.
+- **Select mode now drags objects**, matching the original editor.
+- Beginning a move/resize/rotate automatically switches the static Exact Capture to Editable Layout, so the visual object—not only its selection outline—follows the pointer.
+- The selection outline, actual scene image, and editable UI widget use the same transient drag state.
+- Corner/edge handles resize from the selected side.
+- The upper handle rotates.
+- Dragging does not rewrite or deep-resolve the project on every mouse-motion event; one change is committed on mouse-up.
+- Captured widgets with stable Ren'Py `id` values are moved through widget-property overrides, so the actual isolated screen preview moves rather than only its outline.
+- Unnamed captured widgets remain connected to their parent but require **Convert to Managed Copy** for dependable editing/export.
 
-## Export behavior
+### Scene/UI separation
 
-The default workflow does not modify project files:
+- `screens`, `overlay`, `transient`, and `top` are no longer created as empty Scene containers.
+- Active screens appear only under the UI hierarchy and UI Layers.
+- Old empty `Layer: transient`, `Layer: screens`, `Layer: overlay`, and `Layer: top` records are removed during JSON loading and in-memory autoreload migration.
+- Scene Layers and UI Layers are separate views.
+- UI children remain nested beneath their real screen/container hierarchy.
+- Explicit widget IDs become readable names such as `Time Text`; anonymous text/buttons use their source expression or visible label where recoverable.
+- Anonymous runtime transforms and helper displayables are flattened instead of appearing as dozens of `Custom` entries.
 
-1. Open the **Export** workspace.
-2. Review each generated section.
-3. Use **Copy Current** to paste it where you want.
+### Dynamic text/value compatibility
 
-**Export Files** explicitly writes a timestamped folder under:
+Captured text stores both:
+
+- its current preview value, and
+- the original screen-language expression where Ren'Py exposes it.
+
+For example, a HUD statement such as:
+
+```renpy
+text "[weekday_name()]"
+```
+
+is kept as the dynamic Ren'Py text value instead of being frozen to `Monday`. The Inspector shows **Text** versus **Value** source modes, a read-only current preview for dynamic text, and the preserved value/expression used by export.
+
+### Properties
+
+- Compact input boxes from the original interface are restored.
+- X/Y and width/height fields are paired.
+- Position, size/layout, text, appearance, and button-image groups are collapsible.
+- Inherited values show a revert button.
+- Property typing updates the active resolved frame in place and creates one field-level undo entry after typing pauses, rather than rebuilding a large captured UI tree per character.
+
+### Assets
+
+- A Unity-style folder tree is built from the real source paths behind registered Ren'Py images and audio files.
+- The right side shows only the current folder or search results.
+- Images, audio, characters, backgrounds, and GUI categories remain available.
+- Search is applied on Enter or the Search button, not on every keystroke.
+- Thumbnails are lazy, paged, cached, and failure-isolated.
+- Ren'Py's parameterized `text` image and other non-previewable registered images remain filtered.
+
+### Performance
+
+- Resolved inherited frames are revision-cached.
+- Inspector typing reuses the current resolved object, including frames with very large UI trees.
+- Canvas objects, bounds, widget overrides, source displayables, tree rows, asset folders, and thumbnails have separate caches.
+- Canvas selection does not recreate the canvas displayable.
+- Captured screens are rebuilt only when their own editable widget changes.
+- Thumbnail transforms are constructed once and kept out of the main `per_interact` visit tree.
+- The exact capture remains the default preview; the editable layout is built only when requested or when an object is edited.
+- Full grid and all-widget bounds remain opt-in Debug overlays.
+
+## Existing handwritten screens
+
+Existing screens are captured as runtime UI records. Live Studio shows their hierarchy and attempts to reproduce their visuals in an isolated preview.
+
+- Widgets with stable screen-language IDs can receive visual overrides.
+- Unsupported or unnamed children are limited/inspect-only.
+- **Convert to Managed Copy** creates an editor-owned hierarchy with unique IDs for full export.
+- Arbitrary Python-created displayables, loops, conditions, custom actions, and complex `use` behavior cannot always be perfectly reconstructed from the evaluated runtime tree.
+
+## Export
+
+The normal workflow remains copy-first:
+
+1. Open **Script**.
+2. Review `story.rpy`, `screens.rpy`, and `live_studio_helpers.rpy` separately.
+3. Copy the section you want.
+
+Nothing is written automatically. **Export Files** explicitly writes a timestamped folder under:
 
 ```text
 game/live_studio_exports/
 ```
 
-The generated sections are:
-
-- `story.rpy` — inherited frame differences, dialogue, choices, flow, and active screens.
-- `screens.rpy` — editor-owned UI and scene overlays.
-- `live_studio_helpers.rpy` — inferred Character definitions, widget overrides, and helper actions.
+Editor-owned block replacement and handwritten-source patching remain experimental and disabled by default.
 
 ## Animation
 
-Animation is intentionally excluded from the main build. The disabled boundary is under `optional/animation/`. Project Frames remain story states. A later animation module should attach timelines to individual scene nodes.
+Animation is intentionally excluded from the main build. The disabled integration boundary remains under `optional/animation/`.
 
-## Important limitation
+## Required real-project check
 
-This package has been statically audited and model-tested, but must still be run through the Ren'Py Launcher **Lint** command and tested with your project's custom screens. Runtime screen structures can vary greatly between projects.
-
-See `VALIDATION.md`, `AUDIT_REPORT.md`, and `MIGRATION.md` before replacing the old editor.
+This build was compiled, model-tested, and compatibility-audited, but your project must still be tested in the real Ren'Py 8.5.3 nightly runtime. Run Launcher **Lint**, then test Live Studio during exploration, dialogue, and a choice menu.

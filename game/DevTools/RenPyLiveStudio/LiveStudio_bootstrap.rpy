@@ -17,9 +17,19 @@ init 900 python in live_studio:
         return True
 
     def _prepare_open_capture():
+        global project_data
         # The shortcut records this in the original game context before
         # invoke_in_new_context creates the modal editor context.
         source = clone(runtime.get("preopen_source") or capture_source_reference())
+        # Autoreload can keep the previous in-memory project alive. Apply model
+        # migrations here as well as during JSON loading so obsolete empty UI
+        # layer scenes disappear immediately without requiring a full restart.
+        if isinstance(project_data, dict):
+            try:
+                project_data = migrate_project(project_data)
+                invalidate_resolved_cache()
+            except Exception as exc:
+                log_diagnostic("warning", "In-memory project migration failed", repr(exc))
         if not isinstance(project_data, dict) or not project_data.get("frames"):
             begin_capture_project("Captured Ren'Py Project", source, keep_snapshot=True)
             return
@@ -42,9 +52,14 @@ init 900 python in live_studio:
             return
 
         _prepare_open_capture()
-        generate_exports()
-        refresh_assets()
-        refresh_source_flow_candidates()
+        # Expensive work is lazy. The asset index is built once and thumbnails
+        # are only created for the visible page. Code previews are generated
+        # when the Code workspace is opened.
+        ensure_assets()
+        # Source-AST traversal is deferred until the Structure panel needs it.
+        # Clear the prior run's result because the opening source statement may
+        # have changed since Live Studio was last opened.
+        runtime.pop("source_candidates", None)
 
         window_value = getattr(renpy.store, "_window", None)
         skipping_value = getattr(renpy.store, "_skipping", None)
@@ -91,5 +106,9 @@ init 910 python:
         config.keymap.setdefault("live_studio", [])
         if live_studio.OPEN_KEY not in config.keymap["live_studio"]:
             config.keymap["live_studio"].append(live_studio.OPEN_KEY)
-        # Init blocks run once per launch, so this is installed exactly once.
-        config.underlay.append(renpy.Keymap(live_studio=live_studio.open_editor_in_new_context))
+        # Autoreload can execute init code more than once in a development
+        # session. Keep one underlay keymap so a single key press opens one
+        # editor context.
+        if not getattr(renpy.store, "_live_studio_underlay_installed", False):
+            config.underlay.append(renpy.Keymap(live_studio=live_studio.open_editor_in_new_context))
+            renpy.store._live_studio_underlay_installed = True

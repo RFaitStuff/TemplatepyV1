@@ -287,7 +287,7 @@ init -879 python in live_studio:
             title = node_type
         return "{} → {}".format(branch, title) if branch else title
 
-    def refresh_source_flow_candidates(limit=24):
+    def refresh_source_flow_candidates(limit=24, restart_ui=True):
         candidates = []
         current = _source_current_node()
         if current is None:
@@ -362,12 +362,13 @@ init -879 python in live_studio:
                 queue.append((successor, combined_branch, child_condition or condition, new_steps))
 
         runtime["source_candidates"] = candidates
-        restart()
+        if restart_ui:
+            restart()
         return candidates
 
     def source_flow_candidates():
         if "source_candidates" not in runtime:
-            return refresh_source_flow_candidates()
+            return refresh_source_flow_candidates(restart_ui=False)
         return runtime.get("source_candidates", [])
 
     def _remove_images_for_source(layer, tag=None):
