@@ -6,3 +6,7 @@ game/libs
 .vscode
 .log
 cache
+gui
+*.rpyc          
+log.txt
+traceback.txt
