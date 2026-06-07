@@ -1,0 +1,10 @@
+﻿I'm sorry, but errors were detected in your script. Please correct the
+errors listed below, and try again.
+
+
+File "game/DevTools/Debug/SceneEditor/SceneEditor_screens.rpy", line 181: Line is indented, but the preceding add statement does not expect a block. Please check this line's indentation. You may have forgotten a colon (:).
+    xsize box_width
+    ^
+
+Ren'Py Version: Ren'Py 8.5.3.26042304+nightly
+Fri May  8 10:44:30 2026
