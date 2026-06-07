@@ -9,6 +9,73 @@ screen scene_editor_button():
     if config.developer:
         textbutton _("Scene Editor") action Function(renpy.invoke_in_new_context, _viewers.open_scene_editor)
 
+screen scene_editor_bottom_dialogue_panel():
+    viewport:
+        mousewheel True
+        scrollbars "vertical"
+        yfill True
+        has vbox
+        spacing _viewers.scene_editor_right_panel_section_spacing
+        hbox:
+            spacing 8
+            xfill True
+            text "Dialogue" yalign .5 style "scene_editor_assets_title"
+            null xfill True
+            textbutton ("Preview On" if _viewers.scene_editor_preview_dialogue else "Preview Off") action Function(_viewers.scene_editor_toggle_setting, "preview_dialogue") selected _viewers.scene_editor_preview_dialogue style "scene_editor_asset_mode_tab_button"
+            textbutton ("Frame On" if _viewers.scene_editor_current_dialogue_visible() else "Frame Off") action Function(_viewers.scene_editor_toggle_current_dialogue_visible) selected _viewers.scene_editor_current_dialogue_visible() style "scene_editor_asset_mode_tab_button"
+        hbox:
+            spacing 6
+            style_prefix "scene_editor_tool"
+            for entry_type in _viewers.scene_editor_dialogue_entry_types:
+                textbutton "+ {}".format(entry_type.title()) action Function(_viewers.scene_editor_add_dialogue_entry, entry_type)
+        $ dialogue_entries = _viewers.scene_editor_dialogue_entries()
+        if not dialogue_entries:
+            text "No dialogue entries for this frame." italic True
+        for entry in dialogue_entries:
+            $ entry_id = entry.get("id")
+            $ entry_selected = entry_id == _viewers.scene_editor_selected_dialogue_entry_id
+            button:
+                style "scene_editor_layer_row_button"
+                action [SelectedIf(entry_selected), Function(_viewers.scene_editor_select_dialogue_entry, entry_id)]
+                selected entry_selected
+                xfill True
+                has vbox
+                spacing 3
+                text "{} [{}] {}".format(">" if entry_selected else " ", entry.get("type", "line"), entry.get("text", "")) size 13 color ("#FFFFFF" if entry_selected else "#C8D8FF")
+                text entry.get("speaker", "") size 11 color "#94A3B8"
+            if entry_selected:
+                hbox:
+                    spacing 4
+                    textbutton "Up" action Function(_viewers.scene_editor_move_dialogue_entry, entry_id, -1) style "scene_editor_layer_icon_button"
+                    textbutton "Down" action Function(_viewers.scene_editor_move_dialogue_entry, entry_id, 1) style "scene_editor_layer_icon_button"
+                    textbutton "Delete" action Function(_viewers.scene_editor_remove_dialogue_entry, entry_id) style "scene_editor_layer_icon_button"
+                if entry.get("type") in ("line", "narration", "reaction"):
+                    text "Speaker" style "scene_editor_property_label"
+                    input default entry.get("speaker", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "speaker") copypaste True xfill True style "scene_editor_property_input"
+                if entry.get("type") in ("line", "narration", "reaction", "choice", "jump", "label"):
+                    text ("Text" if entry.get("type") not in ("jump", "label") else "Label / Target Text") style "scene_editor_property_label"
+                    input default entry.get("text", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "text") copypaste True xfill True style "scene_editor_property_input"
+                if entry.get("type") in ("choice", "jump", "label"):
+                    text "Target" style "scene_editor_property_label"
+                    input default entry.get("target", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "target") copypaste True xfill True style "scene_editor_property_input"
+                if entry.get("type") in ("condition", "choice"):
+                    text "Condition" style "scene_editor_property_label"
+                    input default entry.get("condition", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "condition") copypaste True xfill True style "scene_editor_property_input"
+                if entry.get("type") in ("script", "stat", "condition"):
+                    text "Payload / Script" style "scene_editor_property_label"
+                    input default entry.get("payload", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "payload") copypaste True xfill True style "scene_editor_property_input"
+                if entry.get("type") == "choice":
+                    text "Choice Options" style "scene_editor_property_label"
+                    textbutton "+ Option" action Function(_viewers.scene_editor_add_choice_option, entry_id) style "scene_editor_layer_icon_button"
+                    for choice_index in range(len(entry.get("choices", []))):
+                        $ choice = entry.get("choices", [])[choice_index]
+                        text "Option {} Caption".format(choice_index + 1) size 11 color "#94A3B8"
+                        input default choice.get("caption", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "caption") copypaste True xfill True style "scene_editor_property_input"
+                        text "Option {} Target".format(choice_index + 1) size 11 color "#94A3B8"
+                        input default choice.get("target", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "target") copypaste True xfill True style "scene_editor_property_input"
+                        text "Option {} Script".format(choice_index + 1) size 11 color "#94A3B8"
+                        input default choice.get("script", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "script") copypaste True xfill True style "scene_editor_property_input"
+
 
 screen _scene_photo_editor():
     default confirm_exit = False
@@ -41,7 +108,7 @@ screen _scene_photo_editor():
     add _viewers.SceneEditorOverlay()
 
     $ _scene_editor_selected_rect = _viewers.scene_editor_selected_screen_rect()
-    if _scene_editor_selected_rect is not None and _viewers.scene_editor_tool_mode in ("select", "scale"):
+    if False and _scene_editor_selected_rect is not None and _viewers.scene_editor_tool_mode in ("select", "scale"):
         $ _scene_editor_box_x, _scene_editor_box_y, _scene_editor_box_w, _scene_editor_box_h = _scene_editor_selected_rect
         $ _scene_editor_box_t = _viewers.scene_editor_selection_outline_thickness
         $ _scene_editor_box_color = _viewers.scene_editor_selection_color
@@ -88,9 +155,12 @@ screen _scene_photo_editor():
             yalign .5
             if _viewers.scene_editor_axis_constraint is not None:
                 text "Axis: {}".format(_viewers.scene_editor_axis_constraint.upper()) yalign .5 color "#8BC6FF" size 14
-            textbutton "▶  Preview" action NullAction() style "scene_editor_toolbar_action_button"
-            textbutton "</>  Extract Script" action Function(_viewers.put_clipboard) style "scene_editor_toolbar_action_button"
-            textbutton "⚙  Settings" action NullAction() style "scene_editor_toolbar_action_button"
+            textbutton "Preview" action Function(_viewers.scene_editor_set_preview_mode, True) style "scene_editor_toolbar_action_button"
+            textbutton "Settings" action Function(_viewers.scene_editor_set_right_panel_tab, "Project") style "scene_editor_toolbar_action_button"
+            textbutton "</>  Export Draft" action Function(_viewers.scene_editor_export_live_studio_script) style "scene_editor_toolbar_action_button"
+            textbutton "Write Draft" action Function(_viewers.scene_editor_write_live_studio_file) style "scene_editor_toolbar_action_button"
+            textbutton "💾  Save" action Function(_viewers.scene_editor_save_project) style "scene_editor_toolbar_action_button"
+            textbutton "↺  Load" action Function(_viewers.scene_editor_load_project) style "scene_editor_toolbar_action_button"
 
     frame:
         style_group "scene_photo_editor"
@@ -116,12 +186,14 @@ screen _scene_photo_editor():
             has vbox
             spacing _viewers.scene_editor_property_viewport_spacing
             if _viewers.scene_editor_has_selected():
-                if _viewers.scene_editor_selected_tag is None:
+                if _viewers.scene_editor_selected_tag is None and _viewers.scene_editor_is_ui_layer():
+                    text "UI Scene · Persistent UI" style "scene_editor_selection_label"
+                elif _viewers.scene_editor_selected_tag is None:
                     text "[_viewers.scene_editor_selected_layer] · Camera" style "scene_editor_selection_label"
                 else:
                     text "[_viewers.scene_editor_selected_layer] · [_viewers.scene_editor_selected_tag]" style "scene_editor_selection_label"
                 null height 4
-                for group_name, props in _viewers.scene_editor_property_groups:
+                for group_name, props in (_viewers.scene_editor_ui_property_groups if _viewers.scene_editor_is_ui_layer() else _viewers.scene_editor_property_groups):
                     $ group_entries = [(_prop_label, _prop_name) for _prop_label, _prop_name in props if _viewers.scene_editor_property_available(_prop_name)]
                     if group_entries:
                         $ display_group = {"Core": "Transform", "Position": "Appearance", "Anchor / Offset": "Filters & Effects", "3D / Orientation": "Animation", "Crop": "Interaction", "Effects": "Physics", "Pan / Tile": "Custom Properties"}.get(group_name, group_name)
@@ -223,6 +295,12 @@ screen _scene_photo_editor():
                                                 textbutton _viewers.scene_editor_value_to_string(prop_key) action Function(_viewers.scene_editor_flash_selected) style "scene_editor_child_name_button"
                                             elif name == "function":
                                                 input default _viewers.scene_editor_value_to_string(prop_key) changed _viewers.scene_editor_inline_changed(prop_key) copypaste True xfill True style "scene_editor_property_input"
+                                            elif _viewers.scene_editor_is_ui_layer() and name in ("text", "bound_variable", "color", "background", "image"):
+                                                input default _viewers.scene_editor_value_to_string(prop_key) changed _viewers.scene_editor_inline_changed(prop_key) copypaste True xfill True style "scene_editor_property_input"
+                                            elif _viewers.scene_editor_is_ui_layer() and name == "visible":
+                                                textbutton _viewers.scene_editor_value_to_string(prop_key) action Function(_viewers.scene_editor_toggle_value, prop_key) style "scene_editor_property_value_button"
+                                            elif _viewers.scene_editor_is_ui_layer() and name in ("kind", "group"):
+                                                textbutton _viewers.scene_editor_value_to_string(prop_key) action Function(_viewers.scene_editor_cycle_ui_choice, prop_key) style "scene_editor_property_value_button"
                                             elif name in _viewers.boolean_props:
                                                 textbutton _viewers.scene_editor_value_to_string(prop_key) action Function(_viewers.scene_editor_toggle_value, prop_key) style "scene_editor_property_value_button"
                                             elif name in _viewers.menu_props:
@@ -239,36 +317,162 @@ screen _scene_photo_editor():
                                                     else:
                                                         add _viewers.SceneEditorDraggableValue(prop_key, xsize=inner_width, ysize=field_inner_height) xpos value_border + value_padding_x ypos value_border + value_padding_y
             else:
-                text _("Select an image or camera from the scene tree.") style "scene_editor_selection_label"
+                text _("Select an image, UI element, or camera from the scene tree.") style "scene_editor_selection_label"
         null height 2
         frame:
             style "scene_editor_panel_header"
             has hbox
             xfill True
-            spacing 6
-            text "Scene Tree" style "scene_editor_panel_header_text"
             null xfill True
-            text "∧" style "scene_editor_panel_header_chevron"
+            hbox:
+                spacing 4
+                xalign 0.5
+                style_prefix "scene_editor_tab"
+                textbutton "Scene" action Function(_viewers.scene_editor_set_tree_tab, "Scene") selected _viewers.scene_editor_tree_tab == "Scene"
+                textbutton "Frame" action Function(_viewers.scene_editor_set_tree_tab, "Frame") selected _viewers.scene_editor_tree_tab == "Frame"
+            null xfill True
         viewport:
             mousewheel True
             scrollbars "vertical"
             yfill True
             has vbox
             spacing _viewers.scene_editor_scene_tree_spacing
-            textbutton "Container (master)" action Function(_viewers.scene_editor_select, "master", None) style "scene_editor_tree_button"
-            for i, scene_data in enumerate(_viewers.scene_keyframes):
-                $ scene_open = i == _viewers.current_scene
-                $ scene_time = scene_data[1]
-                textbutton "{} scene_{}".format("⌄" if scene_open else "›", i) action [SelectedIf(scene_open), Function(_viewers.scene_editor_change_scene, i)] style "scene_editor_tree_button"
-                if scene_open:
-                    $ current_layers = _viewers.scene_editor_current_layers()
-                    for l in current_layers:
-                        $ layer_selected = l == _viewers.scene_editor_selected_layer and _viewers.scene_editor_selected_tag is None
-                        textbutton "  {} {}".format("⌄" if layer_selected else "›", l) action [SelectedIf(layer_selected), Function(_viewers.scene_editor_change_layer, l)] style "scene_editor_tree_button"
-                        $ _scene_layer_state = _viewers.get_image_state(l) if hasattr(_viewers, "get_image_state") else (_viewers.image_state[_viewers.current_scene].get(l, {}) if hasattr(_viewers, "image_state") else {})
-                        for tag in _scene_layer_state:
-                            $ tag_selected = l == _viewers.scene_editor_selected_layer and tag == _viewers.scene_editor_selected_tag
-                            textbutton "      {}".format(tag) action [SelectedIf(tag_selected), Function(_viewers.scene_editor_select, l, tag)] style "scene_editor_tree_button"
+            if _viewers.scene_editor_tree_tab == "Scene":
+                hbox:
+                    spacing 4
+                    xalign 0.5
+                    textbutton "+ Frame" action Function(_viewers.scene_editor_add_scene, False, False) style "scene_editor_layer_icon_button"
+                    textbutton "+ Dialogue" action [Function(_viewers.scene_editor_set_bottom_panel_tab, "Dialogue"), Function(_viewers.scene_editor_add_dialogue_entry, "line")] style "scene_editor_layer_icon_button"
+                for i, scene_data in enumerate(_viewers.scene_keyframes):
+                    $ scene_open = _viewers.scene_editor_tree_is_expanded("frame", i, i)
+                    $ scene_selected = i == _viewers.current_scene
+                    $ can_move_selected_here = (not scene_selected) and _viewers.scene_editor_selected_tag is not None and not _viewers.scene_editor_is_ui_layer()
+                    if can_move_selected_here:
+                        textbutton "    Move selected here" action Function(_viewers.scene_editor_move_image_to_scene, _viewers.current_scene, _viewers.scene_editor_selected_layer, _viewers.scene_editor_selected_tag, i) style "scene_editor_tree_button"
+                    textbutton "{} {}{}".format("⌄" if scene_open else "›", _viewers.scene_editor_frame_label(i), " · current" if scene_selected else "") action [SelectedIf(scene_selected), Function(_viewers.scene_editor_change_scene, i), Function(_viewers.scene_editor_toggle_tree_expanded, "frame", i, i)] style "scene_editor_tree_button"
+                    if scene_open:
+                        $ current_layers = _viewers.scene_editor_current_layers(i)
+                        for l in current_layers:
+                            $ layer_open = _viewers.scene_editor_tree_is_expanded("layer", l, i)
+                            $ layer_selected = i == _viewers.current_scene and l == _viewers.scene_editor_selected_layer and _viewers.scene_editor_selected_tag is None
+                            textbutton "  {} {}".format("⌄" if layer_open else "›", l) action [SelectedIf(layer_selected), Function(_viewers.scene_editor_change_scene, i), Function(_viewers.scene_editor_change_layer, l), Function(_viewers.scene_editor_toggle_tree_expanded, "layer", l, i)] style "scene_editor_tree_button"
+                            if layer_open and i == _viewers.current_scene:
+                                $ _scene_layer_state = _viewers.get_image_state(l) if hasattr(_viewers, "get_image_state") else (_viewers.image_state[_viewers.current_scene].get(l, {}) if hasattr(_viewers, "image_state") else {})
+                                for tag in _scene_layer_state:
+                                    $ tag_selected = l == _viewers.scene_editor_selected_layer and tag == _viewers.scene_editor_selected_tag
+                                    textbutton "      {}".format(tag) action [SelectedIf(tag_selected), Function(_viewers.scene_editor_select, l, tag)] style "scene_editor_tree_button"
+                        if i == _viewers.current_scene:
+                            $ ui_open = _viewers.scene_editor_tree_is_expanded("ui", "scene", i)
+                            $ ui_layer_selected = _viewers.scene_editor_selected_layer == _viewers.scene_editor_ui_layer and _viewers.scene_editor_selected_tag is None
+                            textbutton "  {} UI".format("⌄" if ui_open else "›") action [SelectedIf(ui_layer_selected), Function(_viewers.scene_editor_change_layer, _viewers.scene_editor_ui_layer), Function(_viewers.scene_editor_toggle_tree_expanded, "ui", "scene", i)] style "scene_editor_tree_button"
+                            if ui_open:
+                                hbox:
+                                    spacing 4
+                                    textbutton "+ Text" action Function(_viewers.scene_editor_add_ui_element, "text", "overlays") style "scene_editor_layer_icon_button"
+                                    textbutton "+ Value" action Function(_viewers.scene_editor_add_ui_element, "value", "stats") style "scene_editor_layer_icon_button"
+                                    textbutton "+ Panel" action Function(_viewers.scene_editor_add_ui_element, "panel", "overlays") style "scene_editor_layer_icon_button"
+                                for group in _viewers.scene_editor_ui_groups:
+                                    $ group_open = _viewers.scene_editor_tree_is_expanded("ui_group", group, i)
+                                    $ group_visible = _viewers.scene_editor_ui_group_visible(group)
+                                    textbutton "      {} {} {}".format("⌄" if group_open else "›", "👁" if group_visible else "🙈", _viewers.scene_editor_ui_group_label(group)) action Function(_viewers.scene_editor_toggle_tree_expanded, "ui_group", group, i) style "scene_editor_tree_button"
+                                    if group_open:
+                                        for tag in [tag for tag in _viewers.scene_editor_ui_layer_panel_tags() if (_viewers.scene_editor_ui_element(tag) or {}).get("group") == group]:
+                                            $ tag_selected = _viewers.scene_editor_selected_layer == _viewers.scene_editor_ui_layer and tag == _viewers.scene_editor_selected_tag
+                                            textbutton "          {}".format(tag) action [SelectedIf(tag_selected), Function(_viewers.scene_editor_select, _viewers.scene_editor_ui_layer, tag)] style "scene_editor_tree_button"
+            elif _viewers.scene_editor_tree_tab == "Frame":
+                text "Current: {}".format(_viewers.scene_editor_current_frame_label()) style "scene_editor_selection_label"
+                hbox:
+                    spacing 4
+                    textbutton "+ Before" action Function(_viewers.scene_editor_add_scene, True, False) style "scene_editor_layer_icon_button"
+                    textbutton "+ After" action Function(_viewers.scene_editor_add_scene, False, False) style "scene_editor_layer_icon_button"
+                    textbutton "+ End" action Function(_viewers.scene_editor_add_scene_end, False) style "scene_editor_layer_icon_button"
+                hbox:
+                    spacing 4
+                    textbutton "Prev" action Function(_viewers.scene_editor_go_previous_frame) style "scene_editor_layer_icon_button"
+                    textbutton "Next" action Function(_viewers.scene_editor_go_next_frame) style "scene_editor_layer_icon_button"
+                    textbutton "Parent" action Function(_viewers.scene_editor_go_parent_frame) style "scene_editor_layer_icon_button"
+                    textbutton "Child" action Function(_viewers.scene_editor_go_child_frame) style "scene_editor_layer_icon_button"
+                for frame_row in _viewers.scene_editor_frame_tree_rows():
+                    $ i = frame_row[0]
+                    $ depth = frame_row[1]
+                    $ frame_record = frame_row[2]
+                    $ frame_selected = i == _viewers.current_scene
+                    $ frame_indent = depth * 12
+                    textbutton "{}{} {}{}".format(" " * int(depth * 2), "▶" if frame_selected else " ", frame_record.get("name", "Frame"), "" if frame_record.get("dialogue_visible", True) else " · no dialogue") action [SelectedIf(frame_selected), Function(_viewers.scene_editor_change_scene, i)] style "scene_editor_tree_button"
+                    if frame_selected:
+                        input default frame_record.get("name", "") changed _viewers.scene_editor_frame_name_changed(i) copypaste True xfill True style "scene_editor_property_input"
+                        text "Notes" style "scene_editor_property_label"
+                        input default frame_record.get("notes", "") changed _viewers.scene_editor_frame_notes_changed(i) copypaste True xfill True style "scene_editor_property_input"
+                        textbutton ("Dialogue Visible" if _viewers.scene_editor_current_dialogue_visible() else "Dialogue Hidden") action Function(_viewers.scene_editor_toggle_current_dialogue_visible) selected _viewers.scene_editor_current_dialogue_visible() style "scene_editor_property_value_button"
+                        if i > 0:
+                            textbutton ("Inherits: On" if frame_record.get("inherits") else "Inherits: Off") action Function(_viewers.scene_editor_set_frame_inherits, i, not frame_record.get("inherits")) style "scene_editor_property_value_button"
+            else:
+                text "Dialogue · {}".format(_viewers.scene_editor_current_frame_id() or "frame") style "scene_editor_selection_label"
+                textbutton ("Preview On" if _viewers.scene_editor_preview_dialogue else "Preview Off") action Function(_viewers.scene_editor_toggle_setting, "preview_dialogue") selected _viewers.scene_editor_preview_dialogue style "scene_editor_property_value_button"
+                textbutton ("Frame Visible" if _viewers.scene_editor_current_dialogue_visible() else "Frame Hidden") action Function(_viewers.scene_editor_toggle_current_dialogue_visible) selected _viewers.scene_editor_current_dialogue_visible() style "scene_editor_property_value_button"
+                hbox:
+                    spacing 4
+                    style_prefix "scene_editor_tool"
+                    for entry_type in _viewers.scene_editor_dialogue_entry_types:
+                        textbutton "+ {}".format(entry_type.title()) action Function(_viewers.scene_editor_add_dialogue_entry, entry_type)
+                $ dialogue_entries = _viewers.scene_editor_dialogue_entries()
+                if not dialogue_entries:
+                    text "No dialogue entries for this frame." italic True
+                for entry in dialogue_entries:
+                    $ entry_id = entry.get("id")
+                    $ entry_selected = entry_id == _viewers.scene_editor_selected_dialogue_entry_id
+                    button:
+                        style "scene_editor_layer_row_button"
+                        action [SelectedIf(entry_selected), Function(_viewers.scene_editor_select_dialogue_entry, entry_id)]
+                        selected entry_selected
+                        xfill True
+                        has vbox
+                        spacing 3
+                        text "{} [{}] {}".format("▶" if entry_selected else " ", entry.get("type", "line"), entry.get("text", "")) size 13 color ("#FFFFFF" if entry_selected else "#C8D8FF")
+                        text entry.get("speaker", "") size 11 color "#94A3B8"
+                    if entry_selected:
+                        hbox:
+                            spacing 4
+                            textbutton "↑" action Function(_viewers.scene_editor_move_dialogue_entry, entry_id, -1) style "scene_editor_layer_icon_button"
+                            textbutton "↓" action Function(_viewers.scene_editor_move_dialogue_entry, entry_id, 1) style "scene_editor_layer_icon_button"
+                            textbutton "Delete" action Function(_viewers.scene_editor_remove_dialogue_entry, entry_id) style "scene_editor_layer_icon_button"
+                        if entry.get("type") in ("line", "narration", "reaction"):
+                            text "Speaker" style "scene_editor_property_label"
+                            input default entry.get("speaker", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "speaker") copypaste True xfill True style "scene_editor_property_input"
+                        if entry.get("type") in ("line", "narration", "reaction", "choice", "jump", "label"):
+                            text ("Text" if entry.get("type") not in ("jump", "label") else "Label / Target Text") style "scene_editor_property_label"
+                            input default entry.get("text", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "text") copypaste True xfill True style "scene_editor_property_input"
+                        if entry.get("type") in ("choice", "jump", "label"):
+                            text "Target" style "scene_editor_property_label"
+                            input default entry.get("target", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "target") copypaste True xfill True style "scene_editor_property_input"
+                        if entry.get("type") in ("condition", "choice"):
+                            text "Condition" style "scene_editor_property_label"
+                            input default entry.get("condition", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "condition") copypaste True xfill True style "scene_editor_property_input"
+                        if entry.get("type") in ("script", "stat", "condition"):
+                            text "Payload / Script" style "scene_editor_property_label"
+                            input default entry.get("payload", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "payload") copypaste True xfill True style "scene_editor_property_input"
+                        text "On Show Script" style "scene_editor_property_label"
+                        input default entry.get("on_show", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "on_show") copypaste True xfill True style "scene_editor_property_input"
+                        text "On Advance Script" style "scene_editor_property_label"
+                        input default entry.get("on_advance", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "on_advance") copypaste True xfill True style "scene_editor_property_input"
+                        if entry.get("type") == "choice":
+                            text "On Select Script" style "scene_editor_property_label"
+                            input default entry.get("on_select", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "on_select") copypaste True xfill True style "scene_editor_property_input"
+                            text "Choice Options" style "scene_editor_property_label"
+                            textbutton "+ Option" action Function(_viewers.scene_editor_add_choice_option, entry_id) style "scene_editor_layer_icon_button"
+                            for choice_index in range(len(entry.get("choices", []))):
+                                $ choice = entry.get("choices", [])[choice_index]
+                                text "Option {} Caption".format(choice_index + 1) size 11 color "#94A3B8"
+                                input default choice.get("caption", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "caption") copypaste True xfill True style "scene_editor_property_input"
+                                text "Option {} Target".format(choice_index + 1) size 11 color "#94A3B8"
+                                input default choice.get("target", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "target") copypaste True xfill True style "scene_editor_property_input"
+                                text "Option {} Condition".format(choice_index + 1) size 11 color "#94A3B8"
+                                input default choice.get("condition", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "condition") copypaste True xfill True style "scene_editor_property_input"
+                                text "Option {} Script".format(choice_index + 1) size 11 color "#94A3B8"
+                                input default choice.get("script", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "script") copypaste True xfill True style "scene_editor_property_input"
+                                text "Option {} Merge Target".format(choice_index + 1) size 11 color "#94A3B8"
+                                input default choice.get("merge_target", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "merge_target") copypaste True xfill True style "scene_editor_property_input"
+                                textbutton "Remove Option" action Function(_viewers.scene_editor_remove_choice_option, entry_id, choice_index) style "scene_editor_layer_icon_button"
 
     frame:
         style_group "scene_photo_properties"
@@ -284,72 +488,282 @@ screen _scene_photo_editor():
                 style_prefix "scene_editor_tab"
                 spacing _viewers.scene_editor_right_panel_tab_spacing
                 textbutton "Layers" action Function(_viewers.scene_editor_set_right_panel_tab, "Layers") selected _viewers.scene_editor_right_panel_tab == "Layers"
+                textbutton "Project" action Function(_viewers.scene_editor_set_right_panel_tab, "Project") selected _viewers.scene_editor_right_panel_tab == "Project"
                 textbutton "History" action Function(_viewers.scene_editor_set_right_panel_tab, "History") selected _viewers.scene_editor_right_panel_tab == "History"
         if _viewers.scene_editor_right_panel_tab == "Layers":
             frame:
                 style "scene_editor_blend_mode_bar"
                 has hbox
                 xfill True
-                spacing 0
-                frame:
-                    style "scene_editor_blend_mode_dropdown"
-                    has hbox
-                    spacing 8
-                    text "Normal" style "scene_editor_blend_mode_text"
-                    text "▾" style "scene_editor_blend_mode_text"
+                spacing 6
+                style_prefix "scene_editor_tab"
+                textbutton "Scenes" action Function(_viewers.scene_editor_set_layers_view, "Scenes") selected _viewers.scene_editor_layers_view == "Scenes"
+                textbutton "UI" action Function(_viewers.scene_editor_set_layers_view, "UI") selected _viewers.scene_editor_layers_view == "UI"
+                null xfill True
+                if _viewers.scene_editor_layers_view == "UI":
+                    textbutton ("UI Visible" if _viewers.scene_editor_ui_scene_visible else "UI Hidden") action Function(_viewers.scene_editor_toggle_ui_scene_visible) selected _viewers.scene_editor_ui_scene_visible style "scene_editor_layer_icon_button"
             viewport:
                 mousewheel True
                 scrollbars "vertical"
                 yfill True
                 has vbox
                 spacing 0
-                for layer in _viewers.scene_editor_current_layers():
-                    if layer in _viewers.zorder_list[_viewers.current_scene]:
-                        $ _scene_layer_state = _viewers.get_image_state(layer) if hasattr(_viewers, "get_image_state") else (_viewers.image_state[_viewers.current_scene].get(layer, {}) if hasattr(_viewers, "image_state") else {})
-                        for tag in _viewers.scene_editor_layer_panel_tags(layer):
-                            if tag in _scene_layer_state:
-                                $ tag_selected = layer == _viewers.scene_editor_selected_layer and tag == _viewers.scene_editor_selected_tag
-                                $ tag_locked = _viewers.scene_editor_item_locked(layer, tag)
-                                $ tag_hidden = _viewers.scene_editor_item_hidden(layer, tag)
-                                $ tag_grouped = _viewers.scene_editor_item_group(layer, tag) is not None
-                                $ child_name = _viewers.scene_editor_child_name(layer, tag)
-                                hbox:
-                                    style "scene_editor_layer_row_container"
-                                    spacing 8
-                                    xfill True
-                                    button:
-                                        style "scene_editor_layer_row_button"
-                                        action [SelectedIf(tag_selected), Function(_viewers.scene_editor_select, layer, tag)]
-                                        selected tag_selected
-                                        xfill True
-                                        has hbox
-                                        spacing 10
-                                        frame:
-                                            style "scene_editor_layer_thumb_frame"
-                                            xsize _viewers.scene_editor_layer_thumb_size
-                                            ysize _viewers.scene_editor_layer_thumb_size
-                                            xalign 0.5
-                                            yalign 0.5
-                                            if child_name:
-                                                add Transform(_viewers.scene_editor_asset_thumbnail(child_name), xalign=0.5, yalign=0.5)
-                                        vbox:
-                                            xfill True
-                                            yalign 0.5
-                                            spacing 3
-                                            $ name_prefix = ""
-                                            if tag_hidden:
-                                                $ name_prefix += "🙈 "
-                                            if tag_locked:
-                                                $ name_prefix += "🔒 "
-                                            $ name_prefix += "▣ " if tag_grouped else ""
-                                            text "{}{}".format(name_prefix, tag) size 14 color ("#7B88A8" if tag_hidden else "#FFFFFF")
-                                            text ("Hidden" if tag_hidden else "Normal") size 11 color "#94A3B8"
+                if _viewers.scene_editor_layers_view == "Scenes":
+                    for layer in _viewers.scene_editor_current_layers():
+                        if layer in _viewers.zorder_list[_viewers.current_scene]:
+                            $ _scene_layer_state = _viewers.get_image_state(layer) if hasattr(_viewers, "get_image_state") else (_viewers.image_state[_viewers.current_scene].get(layer, {}) if hasattr(_viewers, "image_state") else {})
+                            for tag in _viewers.scene_editor_layer_panel_tags(layer):
+                                if tag in _scene_layer_state:
+                                    $ tag_selected = layer == _viewers.scene_editor_selected_layer and tag == _viewers.scene_editor_selected_tag
+                                    $ tag_locked = _viewers.scene_editor_item_locked(layer, tag)
+                                    $ tag_hidden = _viewers.scene_editor_item_hidden(layer, tag)
+                                    $ tag_grouped = _viewers.scene_editor_item_group(layer, tag) is not None
+                                    $ child_name = _viewers.scene_editor_child_name(layer, tag)
                                     hbox:
-                                        style "scene_editor_layer_row_actions"
-                                        spacing 4
+                                        style "scene_editor_layer_row_container"
+                                        spacing 8
+                                        xfill True
+                                        button:
+                                            style "scene_editor_layer_row_button"
+                                            action [SelectedIf(tag_selected), Function(_viewers.scene_editor_select, layer, tag)]
+                                            selected tag_selected
+                                            xfill True
+                                            has hbox
+                                            spacing 10
+                                            frame:
+                                                style "scene_editor_layer_thumb_frame"
+                                                xsize _viewers.scene_editor_layer_thumb_size
+                                                ysize _viewers.scene_editor_layer_thumb_size
+                                                xalign 0.5
+                                                yalign 0.5
+                                                if child_name:
+                                                    add Transform(_viewers.scene_editor_asset_thumbnail(child_name, _viewers.scene_editor_layer_thumb_size - 8, _viewers.scene_editor_layer_thumb_size - 8), xalign=0.5, yalign=0.5)
+                                            vbox:
+                                                xfill True
+                                                yalign 0.5
+                                                spacing 3
+                                                text "{}{}".format("▣ " if tag_grouped else "", tag) size 14 color ("#7B88A8" if tag_hidden else "#FFFFFF")
+                                                text child_name size 11 color "#94A3B8"
+                                        hbox:
+                                            style "scene_editor_layer_row_actions"
+                                            spacing 4
+                                            yalign 0.5
+                                            textbutton ("🔒" if tag_locked else "🔓") action Function(_viewers.scene_editor_toggle_lock, layer, tag) style "scene_editor_layer_icon_button"
+                                            textbutton ("🙈" if tag_hidden else "👁") action Function(_viewers.scene_editor_toggle_hidden, layer, tag) style "scene_editor_layer_icon_button"
+                else:
+                    for group in _viewers.scene_editor_ui_groups:
+                        $ group_visible = _viewers.scene_editor_ui_group_visible(group)
+                        $ group_locked = _viewers.scene_editor_ui_group_locked(group)
+                        hbox:
+                            style "scene_editor_layer_row_container"
+                            spacing 8
+                            xfill True
+                            textbutton _viewers.scene_editor_ui_group_label(group) action Function(_viewers.scene_editor_toggle_ui_group, group) style "scene_editor_tree_button" xfill True
+                            hbox:
+                                style "scene_editor_layer_row_actions"
+                                spacing 4
+                                yalign 0.5
+                                textbutton ("🔒" if group_locked else "🔓") action Function(_viewers.scene_editor_toggle_ui_group_lock, group) style "scene_editor_layer_icon_button"
+                                textbutton ("👁" if group_visible else "🙈") action Function(_viewers.scene_editor_toggle_ui_group, group) style "scene_editor_layer_icon_button"
+                        for tag in [tag for tag in _viewers.scene_editor_ui_layer_panel_tags() if (_viewers.scene_editor_ui_element(tag) or {}).get("group") == group]:
+                            $ _ui_element = _viewers.scene_editor_ui_element(tag) or {}
+                            $ tag_selected = _viewers.scene_editor_selected_layer == _viewers.scene_editor_ui_layer and tag == _viewers.scene_editor_selected_tag
+                            $ tag_locked = _viewers.scene_editor_item_locked(_viewers.scene_editor_ui_layer, tag)
+                            $ tag_hidden = _viewers.scene_editor_item_hidden(_viewers.scene_editor_ui_layer, tag) or not _ui_element.get("visible", True) or not _viewers.scene_editor_ui_group_visible(_ui_element.get("group", "overlays")) or not _viewers.scene_editor_ui_scene_visible
+                            hbox:
+                                style "scene_editor_layer_row_container"
+                                spacing 8
+                                xfill True
+                                button:
+                                    style "scene_editor_layer_row_button"
+                                    action [SelectedIf(tag_selected), Function(_viewers.scene_editor_select, _viewers.scene_editor_ui_layer, tag)]
+                                    selected tag_selected
+                                    xfill True
+                                    has hbox
+                                    spacing 10
+                                    frame:
+                                        style "scene_editor_layer_thumb_frame"
+                                        xsize _viewers.scene_editor_layer_thumb_size
+                                        ysize _viewers.scene_editor_layer_thumb_size
+                                        xalign 0.5
                                         yalign 0.5
-                                        textbutton ("🙈" if tag_hidden else "👁") action Function(_viewers.scene_editor_toggle_hidden, layer, tag) style "scene_editor_layer_icon_button"
-                                        textbutton ("🔒" if tag_locked else "🔓") action Function(_viewers.scene_editor_toggle_lock, layer, tag) style "scene_editor_layer_icon_button"
+                                        text ("▭" if _ui_element.get("kind") == "panel" else ("ƒ" if _ui_element.get("kind") == "value" else "T")) size 20 xalign .5 yalign .5
+                                    vbox:
+                                        xfill True
+                                        yalign 0.5
+                                        spacing 3
+                                        text tag size 14 color ("#7B88A8" if tag_hidden else "#FFFFFF")
+                                        text _viewers.scene_editor_ui_group_label(_ui_element.get("group", "overlays")) size 11 color "#94A3B8"
+                                hbox:
+                                    style "scene_editor_layer_row_actions"
+                                    spacing 4
+                                    yalign 0.5
+                                    textbutton ("🔒" if tag_locked else "🔓") action Function(_viewers.scene_editor_toggle_lock, _viewers.scene_editor_ui_layer, tag) style "scene_editor_layer_icon_button"
+                                    textbutton ("🙈" if tag_hidden else "👁") action Function(_viewers.scene_editor_toggle_hidden, _viewers.scene_editor_ui_layer, tag) style "scene_editor_layer_icon_button"
+        elif _viewers.scene_editor_right_panel_tab == "Frames":
+            viewport:
+                mousewheel True
+                scrollbars "vertical"
+                yfill True
+                has vbox
+                spacing _viewers.scene_editor_right_panel_section_spacing
+                text "Current: {}".format(_viewers.scene_editor_current_frame_label()) style "scene_editor_selection_label"
+                hbox:
+                    spacing 6
+                    textbutton "Prev" action Function(_viewers.scene_editor_go_previous_frame) style "scene_editor_layer_icon_button"
+                    textbutton "Next" action Function(_viewers.scene_editor_go_next_frame) style "scene_editor_layer_icon_button"
+                    textbutton "Parent" action Function(_viewers.scene_editor_go_parent_frame) style "scene_editor_layer_icon_button"
+                    textbutton "Child" action Function(_viewers.scene_editor_go_child_frame) style "scene_editor_layer_icon_button"
+                hbox:
+                    spacing 6
+                    textbutton "+ Before" action Function(_viewers.scene_editor_add_scene, True, False) style "scene_editor_tool_button"
+                    textbutton "+ After" action Function(_viewers.scene_editor_add_scene, False, False) style "scene_editor_tool_button"
+                    textbutton "+ End" action Function(_viewers.scene_editor_add_scene_end, False) style "scene_editor_tool_button"
+                hbox:
+                    spacing 6
+                    textbutton "+ Empty After" action Function(_viewers.scene_editor_add_scene, False, True) style "scene_editor_tool_button"
+                    textbutton "+ Empty End" action Function(_viewers.scene_editor_add_scene_end, True) style "scene_editor_tool_button"
+                textbutton ("Dialogue Visible" if _viewers.scene_editor_current_dialogue_visible() else "Dialogue Hidden") action Function(_viewers.scene_editor_toggle_current_dialogue_visible) selected _viewers.scene_editor_current_dialogue_visible() style "scene_editor_property_value_button"
+                for frame_row in _viewers.scene_editor_frame_tree_rows():
+                    $ i = frame_row[0]
+                    $ depth = frame_row[1]
+                    $ frame_record = frame_row[2]
+                    $ frame_selected = i == _viewers.current_scene
+                    $ frame_indent = depth * 12
+                    button:
+                        style "scene_editor_layer_row_button"
+                        action [SelectedIf(frame_selected), Function(_viewers.scene_editor_change_scene, i)]
+                        selected frame_selected
+                        xfill True
+                        has hbox
+                        spacing 4
+                        null width frame_indent
+                        vbox:
+                            spacing 4
+                            text "{} {}{}".format("▶" if frame_selected else " ", frame_record.get("name", "Frame"), "" if frame_record.get("dialogue_visible", True) else " · no dialogue") size 14 color ("#FFFFFF" if frame_selected else "#C8D8FF")
+                            text "{} · parent {}".format(frame_record.get("id", ""), frame_record.get("parent_id") or "root") size 11 color "#94A3B8"
+                    if frame_selected:
+                        input default frame_record.get("name", "") changed _viewers.scene_editor_frame_name_changed(i) copypaste True xfill True style "scene_editor_property_input"
+                        text "Notes" style "scene_editor_property_label"
+                        input default frame_record.get("notes", "") changed _viewers.scene_editor_frame_notes_changed(i) copypaste True xfill True style "scene_editor_property_input"
+                        if i > 0:
+                            textbutton ("Inherits: On" if frame_record.get("inherits") else "Inherits: Off") action Function(_viewers.scene_editor_set_frame_inherits, i, not frame_record.get("inherits")) style "scene_editor_property_value_button"
+        elif _viewers.scene_editor_right_panel_tab == "Dialogue":
+            viewport:
+                mousewheel True
+                scrollbars "vertical"
+                yfill True
+                has vbox
+                spacing _viewers.scene_editor_right_panel_section_spacing
+                text "Dialogue · {}".format(_viewers.scene_editor_current_frame_id() or "frame") style "scene_editor_selection_label"
+                textbutton ("Preview Dialogue On" if _viewers.scene_editor_preview_dialogue else "Preview Dialogue Off") action Function(_viewers.scene_editor_toggle_setting, "preview_dialogue") selected _viewers.scene_editor_preview_dialogue style "scene_editor_property_value_button"
+                textbutton ("Frame Dialogue Visible" if _viewers.scene_editor_current_dialogue_visible() else "Frame Dialogue Hidden") action Function(_viewers.scene_editor_toggle_current_dialogue_visible) selected _viewers.scene_editor_current_dialogue_visible() style "scene_editor_property_value_button"
+                hbox:
+                    spacing 4
+                    style_prefix "scene_editor_tool"
+                    for entry_type in _viewers.scene_editor_dialogue_entry_types:
+                        textbutton "+ {}".format(entry_type.title()) action Function(_viewers.scene_editor_add_dialogue_entry, entry_type)
+                $ dialogue_entries = _viewers.scene_editor_dialogue_entries()
+                if not dialogue_entries:
+                    text "No dialogue entries for this frame." italic True
+                for entry in dialogue_entries:
+                    $ entry_id = entry.get("id")
+                    $ entry_selected = entry_id == _viewers.scene_editor_selected_dialogue_entry_id
+                    button:
+                        style "scene_editor_layer_row_button"
+                        action [SelectedIf(entry_selected), Function(_viewers.scene_editor_select_dialogue_entry, entry_id)]
+                        selected entry_selected
+                        xfill True
+                        has vbox
+                        spacing 3
+                        text "{} [{}] {}".format("▶" if entry_selected else " ", entry.get("type", "line"), entry.get("text", "")) size 13 color ("#FFFFFF" if entry_selected else "#C8D8FF")
+                        text entry.get("speaker", "") size 11 color "#94A3B8"
+                    if entry_selected:
+                        hbox:
+                            spacing 4
+                            textbutton "↑" action Function(_viewers.scene_editor_move_dialogue_entry, entry_id, -1) style "scene_editor_layer_icon_button"
+                            textbutton "↓" action Function(_viewers.scene_editor_move_dialogue_entry, entry_id, 1) style "scene_editor_layer_icon_button"
+                            textbutton "Delete" action Function(_viewers.scene_editor_remove_dialogue_entry, entry_id) style "scene_editor_layer_icon_button"
+                        if entry.get("type") in ("line", "narration", "reaction"):
+                            text "Speaker" style "scene_editor_property_label"
+                            hbox:
+                                spacing 4
+                                for char_pair in _viewers.scene_editor_known_characters():
+                                    $ char_id = char_pair[0]
+                                    $ char_label = char_pair[1]
+                                    textbutton char_label action Function(_viewers.scene_editor_set_dialogue_speaker, entry_id, char_id) selected entry.get("speaker", "") == char_id style "scene_editor_layer_icon_button"
+                            input default entry.get("speaker", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "speaker") copypaste True xfill True style "scene_editor_property_input"
+                        if entry.get("type") in ("line", "narration", "reaction", "choice", "jump", "label"):
+                            text ("Text" if entry.get("type") not in ("jump", "label") else "Label / Target Text") style "scene_editor_property_label"
+                            input default entry.get("text", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "text") copypaste True xfill True style "scene_editor_property_input"
+                        if entry.get("type") in ("choice", "jump", "label"):
+                            text "Target" style "scene_editor_property_label"
+                            input default entry.get("target", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "target") copypaste True xfill True style "scene_editor_property_input"
+                        if entry.get("type") in ("condition", "choice"):
+                            text "Condition" style "scene_editor_property_label"
+                            input default entry.get("condition", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "condition") copypaste True xfill True style "scene_editor_property_input"
+                        if entry.get("type") in ("script", "stat", "condition"):
+                            text "Payload / Script" style "scene_editor_property_label"
+                            input default entry.get("payload", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "payload") copypaste True xfill True style "scene_editor_property_input"
+                        text "On Show Script" style "scene_editor_property_label"
+                        input default entry.get("on_show", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "on_show") copypaste True xfill True style "scene_editor_property_input"
+                        text "On Advance Script" style "scene_editor_property_label"
+                        input default entry.get("on_advance", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "on_advance") copypaste True xfill True style "scene_editor_property_input"
+                        if entry.get("type") == "choice":
+                            text "On Select Script" style "scene_editor_property_label"
+                            input default entry.get("on_select", "") changed _viewers.scene_editor_dialogue_field_changed(entry_id, "on_select") copypaste True xfill True style "scene_editor_property_input"
+                        if entry.get("type") == "choice":
+                            text "Choice Options" style "scene_editor_property_label"
+                            textbutton "+ Option" action Function(_viewers.scene_editor_add_choice_option, entry_id) style "scene_editor_layer_icon_button"
+                            for choice_index in range(len(entry.get("choices", []))):
+                                $ choice = entry.get("choices", [])[choice_index]
+                                text "Option {} Caption".format(choice_index + 1) size 11 color "#94A3B8"
+                                input default choice.get("caption", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "caption") copypaste True xfill True style "scene_editor_property_input"
+                                text "Option {} Target".format(choice_index + 1) size 11 color "#94A3B8"
+                                input default choice.get("target", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "target") copypaste True xfill True style "scene_editor_property_input"
+                                text "Option {} Condition".format(choice_index + 1) size 11 color "#94A3B8"
+                                input default choice.get("condition", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "condition") copypaste True xfill True style "scene_editor_property_input"
+                                text "Option {} Script".format(choice_index + 1) size 11 color "#94A3B8"
+                                input default choice.get("script", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "script") copypaste True xfill True style "scene_editor_property_input"
+                                text "Option {} Merge Target".format(choice_index + 1) size 11 color "#94A3B8"
+                                input default choice.get("merge_target", "") changed _viewers.scene_editor_choice_field_changed(entry_id, choice_index, "merge_target") copypaste True xfill True style "scene_editor_property_input"
+                                textbutton "Remove Option" action Function(_viewers.scene_editor_remove_choice_option, entry_id, choice_index) style "scene_editor_layer_icon_button"
+        elif _viewers.scene_editor_right_panel_tab == "Project":
+            viewport:
+                mousewheel True
+                scrollbars "vertical"
+                yfill True
+                has vbox
+                spacing _viewers.scene_editor_right_panel_section_spacing
+                text "Project" style "scene_editor_selection_label"
+                text "Name" style "scene_editor_property_label"
+                input default _viewers.scene_editor_project_name changed _viewers.scene_editor_set_project_name copypaste True xfill True style "scene_editor_property_input"
+                text "Route ID" style "scene_editor_property_label"
+                input default _viewers.scene_editor_current_route_id changed _viewers.scene_editor_set_route_id copypaste True xfill True style "scene_editor_property_input"
+                text "Slot" style "scene_editor_property_label"
+                input default _viewers.scene_editor_project_slot changed _viewers.scene_editor_set_project_slot copypaste True xfill True style "scene_editor_property_input"
+                hbox:
+                    spacing 6
+                    textbutton "Save Project" action Function(_viewers.scene_editor_save_project) style "scene_editor_tool_button"
+                    textbutton "Load Project" action Function(_viewers.scene_editor_load_project) style "scene_editor_tool_button"
+                text "Settings" style "scene_editor_selection_label"
+                textbutton ("Preview Dialogue: On" if _viewers.scene_editor_preview_dialogue else "Preview Dialogue: Off") action Function(_viewers.scene_editor_toggle_setting, "preview_dialogue") selected _viewers.scene_editor_preview_dialogue style "scene_editor_property_value_button"
+                textbutton ("Export Visuals: On" if _viewers.scene_editor_export_visuals else "Export Visuals: Off") action Function(_viewers.scene_editor_toggle_setting, "export_visuals") selected _viewers.scene_editor_export_visuals style "scene_editor_property_value_button"
+                textbutton ("Export UI: On" if _viewers.scene_editor_export_ui else "Export UI: Off") action Function(_viewers.scene_editor_toggle_setting, "export_ui") selected _viewers.scene_editor_export_ui style "scene_editor_property_value_button"
+                textbutton ("Export Dialogue: On" if _viewers.scene_editor_export_dialogue else "Export Dialogue: Off") action Function(_viewers.scene_editor_toggle_setting, "export_dialogue") selected _viewers.scene_editor_export_dialogue style "scene_editor_property_value_button"
+                textbutton ("Scene Clears: On" if _viewers.scene_editor_export_scene_clears else "Scene Clears: Off") action Function(_viewers.scene_editor_toggle_setting, "export_scene_clears") selected _viewers.scene_editor_export_scene_clears style "scene_editor_property_value_button"
+                textbutton ("Hidden UI Export: On" if _viewers.scene_editor_export_hidden_ui else "Hidden UI Export: Off") action Function(_viewers.scene_editor_toggle_setting, "export_hidden_ui") selected _viewers.scene_editor_export_hidden_ui style "scene_editor_property_value_button"
+                text "End Insert Step" style "scene_editor_property_label"
+                input default str(_viewers.scene_editor_frame_insert_step) changed _viewers.scene_editor_set_frame_insert_step copypaste True xfill True style "scene_editor_property_input"
+                text "Export" style "scene_editor_selection_label"
+                textbutton "Copy Draft Script" action Function(_viewers.scene_editor_export_live_studio_script) style "scene_editor_tool_button"
+                textbutton "Write Experimental Draft File" action Function(_viewers.scene_editor_write_live_studio_file) style "scene_editor_tool_button"
+                if _viewers.scene_editor_export_cache:
+                    text "Last export generated: {} chars".format(len(_viewers.scene_editor_export_cache)) size 12 color "#94A3B8"
+                if _viewers.scene_editor_last_written_file:
+                    text "Last file: {}".format(_viewers.scene_editor_last_written_file) size 12 color "#94A3B8"
+                text "Frames: {}".format(len(_viewers.scene_editor_ensure_frame_records())) size 12 color "#94A3B8"
+                text "Route: {}".format(_viewers.scene_editor_current_route_id) size 12 color "#94A3B8"
         else:
             viewport:
                 mousewheel True
@@ -383,7 +797,10 @@ screen _scene_photo_editor():
                 xfill True
                 text "Assets" yalign .5 style "scene_editor_assets_title"
                 null width 12
-                for _tab_name in ("Images", "Audio", "Characters", "Backgrounds", "GUI"):
+                textbutton "Assets" action Function(_viewers.scene_editor_set_bottom_panel_tab, "Assets") selected (_viewers.scene_editor_bottom_panel_tab == "Assets") style "scene_editor_asset_mode_tab_button"
+                textbutton "Dialogue" action Function(_viewers.scene_editor_set_bottom_panel_tab, "Dialogue") selected (_viewers.scene_editor_bottom_panel_tab == "Dialogue") style "scene_editor_asset_mode_tab_button"
+                null width 12
+                for _tab_name in ("Images", "Audio"):
                     textbutton _tab_name action Function(_viewers.scene_editor_set_asset_tab, _tab_name) selected (_viewers.scene_editor_asset_tab == _tab_name) style "scene_editor_asset_mode_tab_button"
                 null xfill True
                 for _sort_name in ("Recent", "Oldest", "Name A-Z", "Name Z-A"):
@@ -552,6 +969,8 @@ screen _scene_photo_editor():
                         style_prefix "scene_editor_tool"
                         textbutton "☷  Group" action [SensitiveIf(_viewers.scene_editor_selected_tag is not None), Function(_viewers.scene_editor_group_selected)]
                         textbutton "☰  Ungroup" action [SensitiveIf(_viewers.scene_editor_selected_tag is not None), Function(_viewers.scene_editor_ungroup_selected)]
+                        textbutton "Lock" action [SensitiveIf(_viewers.scene_editor_selected_tag is not None), Function(_viewers.scene_editor_lock_selected)]
+                        textbutton "Unlock" action [SensitiveIf(_viewers.scene_editor_selected_tag is not None), Function(_viewers.scene_editor_unlock_selected)]
             vbox:
                 spacing _viewers.scene_editor_bottom_section_spacing
                 vbox:
@@ -560,6 +979,47 @@ screen _scene_photo_editor():
                         spacing _viewers.scene_editor_secondary_controls_spacing
                         textbutton "Undo" action [SensitiveIf(len(_viewers.scene_editor_history) > 0), Function(_viewers.scene_editor_undo)] style "scene_editor_tool_button"
                         textbutton "Redo" action [SensitiveIf(len(_viewers.scene_editor_redo_stack) > 0), Function(_viewers.scene_editor_redo)] style "scene_editor_tool_button"
+
+    if _viewers.scene_editor_bottom_panel_tab == "Dialogue":
+        frame:
+            style_group "scene_photo_properties"
+            background _viewers.scene_editor_asset_panel_background
+            xpos _viewers.scene_editor_sidebar_width
+            ypos config.screen_height - _viewers.scene_editor_bottom_height
+            xsize _viewers.scene_editor_asset_panel_width
+            ysize _viewers.scene_editor_bottom_height
+            has vbox
+            spacing _viewers.scene_editor_asset_panel_spacing
+            hbox:
+                spacing 6
+                yalign .5
+                xfill True
+                text "Dialogue" yalign .5 style "scene_editor_assets_title"
+                null width 12
+                textbutton "Assets" action Function(_viewers.scene_editor_set_bottom_panel_tab, "Assets") selected False style "scene_editor_asset_mode_tab_button"
+                textbutton "Dialogue" action Function(_viewers.scene_editor_set_bottom_panel_tab, "Dialogue") selected True style "scene_editor_asset_mode_tab_button"
+            use scene_editor_bottom_dialogue_panel
+
+    if _viewers.scene_editor_preview_mode:
+        add _viewers.SceneEditorFullscreenPreview()
+        frame:
+            modal True
+            xpos 0
+            ypos _viewers.scene_editor_top_height
+            xsize config.screen_width
+            ysize config.screen_height - _viewers.scene_editor_top_height
+            background None
+        frame:
+            style_group "scene_photo_toolbar"
+            xpos 0
+            ypos 0
+            xsize config.screen_width
+            ysize _viewers.scene_editor_top_height
+            has hbox
+            spacing 8
+            text "Preview" yalign .5 style "scene_editor_logo_text"
+            null xfill True
+            textbutton "Leave Preview" action Function(_viewers.scene_editor_set_preview_mode, False) style "scene_editor_toolbar_action_button"
 
     if confirm_exit:
         frame:
@@ -606,6 +1066,7 @@ init -897 python in _viewers:
             self.resize_handle = None
             self.start_rotate_angle = 0.0
             self.last_applied_value = None
+            self.last_redraw_st = 0.0
 
         def __eq__(self, other):
             return isinstance(other, SceneEditorOverlay)
@@ -741,7 +1202,7 @@ init -897 python in _viewers:
                         scene_editor_raise_ignore_event()
                     scene_editor_raise_ignore_event()
             elif ev.type == self.MOUSEMOTION and self.mode is not None:
-                self.update_drag(x, y)
+                self.update_drag(x, y, st)
                 scene_editor_raise_ignore_event()
             elif ev.type == self.MOUSEBUTTONUP and getattr(ev, "button", None) == 1 and self.mode is not None:
                 self.mode = None
@@ -752,7 +1213,8 @@ init -897 python in _viewers:
                 scene_editor_clear_axis_constraint()
                 change_time(current_time)
                 scene_editor_raise_ignore_event()
-            renpy.redraw(self, 0)
+            if self.mode is None:
+                renpy.redraw(self, 0)
 
         def begin_drag(self, mode, x, y, handle=None):
             global scene_editor_active_drag_mode
@@ -762,24 +1224,28 @@ init -897 python in _viewers:
             self.tag = scene_editor_selected_tag
             self.resize_handle = handle
             self.last_applied_value = None
+            self.last_redraw_st = 0.0
             self.start_mouse = (x, y)
-            self.start_stage_mouse = scene_editor_screen_to_stage(x, y)
+            if scene_editor_is_ui_layer(self.layer):
+                self.start_stage_mouse = scene_editor_screen_to_ui_stage(x, y)
+            else:
+                self.start_stage_mouse = scene_editor_screen_to_stage(x, y)
             self.drag_scale = max(0.001, scene_editor_canvas_scale_value())
             self.start_pos = (
-                scene_editor_to_pixel(get_value((self.tag, self.layer, "xpos"), default=True), config.screen_width),
-                scene_editor_to_pixel(get_value((self.tag, self.layer, "ypos"), default=True), config.screen_height),
+                scene_editor_to_pixel(scene_editor_get_property_value((self.tag, self.layer, "xpos"), default=True), config.screen_width),
+                scene_editor_to_pixel(scene_editor_get_property_value((self.tag, self.layer, "ypos"), default=True), config.screen_height),
             )
             self.start_rect = scene_editor_stage_item_rect(self.layer, self.tag)
             self.start_scale = (
-                get_value((self.tag, self.layer, "xzoom"), default=True),
-                get_value((self.tag, self.layer, "yzoom"), default=True),
+                scene_editor_get_property_value((self.tag, self.layer, "xzoom"), default=True),
+                scene_editor_get_property_value((self.tag, self.layer, "yzoom"), default=True),
             )
             if self.start_scale[0] is None or self.start_scale[1] is None:
                 self.start_scale = (
                     1.0 if self.start_scale[0] is None else self.start_scale[0],
                     1.0 if self.start_scale[1] is None else self.start_scale[1],
                 )
-            self.start_rotate = get_value((self.tag, self.layer, "rotate"), default=True)
+            self.start_rotate = scene_editor_get_property_value((self.tag, self.layer, "rotate"), default=True)
             if self.start_rotate is None:
                 self.start_rotate = 0.0
             if self.start_rect is not None:
@@ -792,7 +1258,7 @@ init -897 python in _viewers:
                 self.start_rotate_angle = 0.0
             scene_editor_push_history()
 
-        def update_drag(self, x, y):
+        def update_drag(self, x, y, st=0):
             if self.tag is None or self.layer is None:
                 return
             sx, sy = self.start_mouse
@@ -801,7 +1267,10 @@ init -897 python in _viewers:
                 scale = 1.0
             if self.mode == "move":
                 px, py = self.start_pos
-                stage_x, stage_y = scene_editor_screen_to_stage(x, y)
+                if scene_editor_is_ui_layer(self.layer):
+                    stage_x, stage_y = scene_editor_screen_to_ui_stage(x, y)
+                else:
+                    stage_x, stage_y = scene_editor_screen_to_stage(x, y)
                 start_stage_x, start_stage_y = self.start_stage_mouse
                 stage_dx = stage_x - start_stage_x
                 stage_dy = stage_y - start_stage_y
@@ -853,17 +1322,39 @@ init -897 python in _viewers:
                 rx, ry, rw, rh = rect
                 cx = rx + rw / 2.0
                 cy = ry + rh / 2.0
-                sx_stage, sy_stage = scene_editor_screen_to_stage(x, y)
+                if scene_editor_is_ui_layer(self.layer):
+                    sx_stage, sy_stage = scene_editor_screen_to_ui_stage(x, y)
+                else:
+                    sx_stage, sy_stage = scene_editor_screen_to_stage(x, y)
                 angle = degrees(atan2(sy_stage - cy, sx_stage - cx))
                 target = round(self.start_rotate + angle - self.start_rotate_angle, 2)
                 if target != self.last_applied_value:
                     self.last_applied_value = target
                     scene_editor_set_rotate(self.layer, self.tag, target, refresh=False)
-            renpy.redraw(self, 0)
+            if st - self.last_redraw_st >= scene_editor_drag_redraw_interval:
+                self.last_redraw_st = st
+                renpy.redraw(self, 0)
+            else:
+                renpy.redraw(self, scene_editor_drag_redraw_interval)
 
         def per_interact(self):
             if self.mode is not None or scene_editor_highlight_until > scene_editor_display_time():
-                renpy.redraw(self, 0)
+                renpy.redraw(self, scene_editor_drag_redraw_interval if self.mode is not None else 0)
+
+    class SceneEditorFullscreenPreview(renpy.Displayable):
+        def __init__(self, **properties):
+            super(SceneEditorFullscreenPreview, self).__init__(**properties)
+
+        def __eq__(self, other):
+            return isinstance(other, SceneEditorFullscreenPreview)
+
+        def render(self, width, height, st, at):
+            scene, _count = scene_editor_game_preview_displayable(st, at)
+            preview = Fixed(xsize=config.screen_width, ysize=config.screen_height)
+            preview.add(Transform(Solid("#000000", xsize=config.screen_width, ysize=config.screen_height)))
+            preview.add(scene)
+            renpy.redraw(self, 0)
+            return renpy.render(preview, width, height, st, at)
 
 
 init -896:

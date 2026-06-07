@@ -1,0 +1,8 @@
+# Rename to .rpy only after an independent animation implementation exists.
+# This file is deliberately disabled and contains no ActionEditor3 code.
+
+init -800 python in live_studio:
+    ANIMATION_AVAILABLE = False
+
+    def open_animation_workspace(node_id):
+        renpy.notify("Animation is not installed in this Live Studio build")

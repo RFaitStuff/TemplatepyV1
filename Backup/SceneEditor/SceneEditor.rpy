@@ -61,11 +61,114 @@ init -898 python in _viewers:
     scene_editor_tool_mode = "select"
     scene_editor_axis_constraint = None
     scene_editor_active_drag_mode = None
+    scene_editor_fast_drag_preview = True
+    scene_editor_precise_hit_testing = False
+    scene_editor_preview_mode = False
+    scene_editor_ui_scene_visible = True
+    scene_editor_tree_tab = "Scene"
+    scene_editor_bottom_panel_tab = "Assets"
+    scene_editor_layers_view = "Scenes"
+    scene_editor_tree_expanded = set()
+    scene_editor_drag_redraw_interval = 0.016
     scene_editor_snap_enabled = False
     scene_editor_snap_increment = scene_editor_default_snap_increment if "scene_editor_default_snap_increment" in globals() else 16
     scene_editor_asset_search_active = False
     scene_editor_active_value_input = None
     scene_editor_highlight_until = 0.0
+    scene_editor_ui_layer = "__ui_scene__"
+    scene_editor_ui_groups = ("dialogue_box", "choices", "stats", "time", "indicators", "overlays")
+    scene_editor_ui_group_labels = {
+        "dialogue_box": "Dialogue Box",
+        "choices": "Choices",
+        "stats": "Stats",
+        "time": "Time / Day",
+        "indicators": "Indicators",
+        "overlays": "Overlays",
+    }
+    scene_editor_ui_elements = [{}]
+    scene_editor_ui_group_visibility = dict((group, True) for group in scene_editor_ui_groups)
+    scene_editor_ui_group_locks = set()
+    scene_editor_ui_counter = 0
+    scene_editor_ui_captured_displayables = [{}]
+    scene_editor_image_fallback_paths = {
+        "ui_hud_characters": "assets/images/UI/HUD/Characters.png",
+        "ui_hud_characters_love": "assets/images/UI/HUD/Characters_Love.png",
+        "ui_hud_characters_lust": "assets/images/UI/HUD/Characters_Lust.png",
+        "ui_hud_location": "assets/images/UI/HUD/Location.png",
+    }
+    scene_editor_project_name = "live_studio_project"
+    scene_editor_current_route_id = "route_main"
+    scene_editor_route_counter = 1
+    scene_editor_frame_counter = 0
+    scene_editor_frame_records = []
+    scene_editor_dialogue_scenes = [{}]
+    scene_editor_dialogue_entry_counter = 0
+    scene_editor_selected_dialogue_entry_id = None
+    scene_editor_project_slot = "autosave"
+    scene_editor_export_cache = ""
+    scene_editor_last_written_file = ""
+    scene_editor_dialogue_entry_types = ("line", "narration", "choice", "script", "stat", "reaction", "jump", "label", "condition")
+    scene_editor_frame_insert_step = 1.0
+    scene_editor_export_visuals = True
+    scene_editor_export_ui = True
+    scene_editor_export_dialogue = True
+    scene_editor_export_scene_clears = True
+    scene_editor_export_hidden_ui = False
+    scene_editor_preview_dialogue = True
+    scene_editor_text_props = ("text", "bound_variable", "color", "background")
+    scene_editor_ui_property_defaults = {
+        "kind": "text",
+        "group": "overlays",
+        "text": "New Text",
+        "bound_variable": "",
+        "background": "#00000000",
+        "image": "",
+        "visible": True,
+        "xpos": 0.5,
+        "ypos": 0.5,
+        "xanchor": 0.5,
+        "yanchor": 0.5,
+        "xoffset": 0,
+        "yoffset": 0,
+        "zoom": 1.0,
+        "xzoom": 1.0,
+        "yzoom": 1.0,
+        "rotate": 0.0,
+        "alpha": 1.0,
+        "size": 32,
+        "color": "#FFFFFF",
+        "xsize": 220,
+        "ysize": 48,
+        "zorder": 0,
+    }
+    scene_editor_ui_property_groups = (
+        ("Core", (
+            ("Kind", "kind"),
+            ("Group", "group"),
+            ("Visible", "visible"),
+            ("Text", "text"),
+            ("Value", "bound_variable"),
+            ("Background", "background"),
+            ("Image", "image"),
+            ("Xpos", "xpos"),
+            ("Ypos", "ypos"),
+            ("Width", "xsize"),
+            ("Height", "ysize"),
+            ("Zoom", "zoom"),
+            ("SizeX", "xzoom"),
+            ("SizeY", "yzoom"),
+            ("Rotate", "rotate"),
+            ("Alpha", "alpha"),
+        )),
+        ("Appearance", (
+            ("Font Size", "size"),
+            ("Color", "color"),
+            ("XAnchor", "xanchor"),
+            ("YAnchor", "yanchor"),
+            ("XOffset", "xoffset"),
+            ("YOffset", "yoffset"),
+        )),
+    )
     scene_editor_transform_preview_props = (
         "xpos", "ypos", "xanchor", "yanchor", "xoffset", "yoffset",
         "zoom", "xzoom", "yzoom", "rotate", "alpha",
@@ -309,15 +412,1473 @@ init -898 python in _viewers:
     def scene_editor_default_false():
         return False
 
-    def scene_editor_current_layers():
+    def scene_editor_set_tree_tab(tab):
+        global scene_editor_tree_tab
+        if tab == "Frames":
+            tab = "Frame"
+        if tab not in ("Scene", "Frame"):
+            return
+        scene_editor_tree_tab = tab
+        renpy.restart_interaction()
+
+    def scene_editor_set_bottom_panel_tab(tab):
+        global scene_editor_bottom_panel_tab
+        if tab not in ("Assets", "Dialogue"):
+            tab = "Assets"
+        scene_editor_bottom_panel_tab = tab
+        renpy.restart_interaction()
+
+    def scene_editor_set_preview_mode(value=True):
+        global scene_editor_preview_mode
+        scene_editor_preview_mode = bool(value)
+        renpy.restart_interaction()
+
+    def scene_editor_toggle_preview_mode():
+        scene_editor_set_preview_mode(not scene_editor_preview_mode)
+
+    def scene_editor_set_layers_view(view):
+        global scene_editor_layers_view, scene_editor_selected_layer, scene_editor_selected_tag
+        if view not in ("Scenes", "UI"):
+            return
+        scene_editor_layers_view = view
+        if view == "UI":
+            scene_editor_selected_layer = scene_editor_ui_layer
+            scene_editor_selected_tag = None
+        elif scene_editor_selected_layer == scene_editor_ui_layer:
+            layers = scene_editor_current_layers()
+            scene_editor_selected_layer = layers[0] if layers else "master"
+            scene_editor_selected_tag = None
+        renpy.restart_interaction()
+
+    def scene_editor_toggle_ui_scene_visible():
+        global scene_editor_ui_scene_visible
+        scene_editor_ui_scene_visible = not scene_editor_ui_scene_visible
+        renpy.restart_interaction()
+
+    def scene_editor_tree_key(kind, value=None, scene_num=None):
+        if scene_num is None:
+            scene_num = current_scene
+        return (kind, value, scene_num)
+
+    def scene_editor_tree_is_expanded(kind, value=None, scene_num=None):
+        key = scene_editor_tree_key(kind, value, scene_num)
+        return key in scene_editor_tree_expanded
+
+    def scene_editor_toggle_tree_expanded(kind, value=None, scene_num=None):
+        if scene_num is None:
+            scene_num = current_scene
+        key = scene_editor_tree_key(kind, value, scene_num)
+        if key in scene_editor_tree_expanded:
+            scene_editor_tree_expanded.remove(key)
+        else:
+            scene_editor_tree_expanded.add(key)
+        renpy.restart_interaction()
+
+    def scene_editor_frame_label(scene_num):
+        scene_editor_ensure_frame_records()
+        if scene_num < 0 or scene_num >= len(scene_editor_frame_records):
+            return "Frame {}".format(scene_num)
+        return scene_editor_frame_records[scene_num].get("name", "Frame {}".format(scene_num))
+
+    def scene_editor_frame_has_dialogue(scene_num):
+        scene = scene_editor_ensure_dialogue_scene(scene_num)
+        return bool(scene.get("entries", []))
+
+    def scene_editor_current_layers(scene_num=None):
+        if scene_num is None:
+            scene_num = current_scene
         rv = []
         for layer in config.layers:
             if not isinstance(layer, str):
                 continue
-            state = get_image_state(layer)
+            state = get_image_state(layer, scene_num)
             if state:
                 rv.append(layer)
         return rv
+
+    def scene_editor_is_ui_layer(layer=None):
+        if layer is None:
+            layer = scene_editor_selected_layer
+        return layer == scene_editor_ui_layer
+
+    def scene_editor_ensure_ui_scene(scene_num=None):
+        if scene_num is None:
+            scene_num = current_scene
+        while len(scene_editor_ui_elements) <= scene_num:
+            scene_editor_ui_elements.append({})
+        scene_editor_ui_elements[scene_num] = scene_editor_normalize_ui_scene(scene_editor_ui_elements[scene_num])
+        return scene_editor_ui_elements[scene_num]
+
+    def scene_editor_ui_scene():
+        return scene_editor_ensure_ui_scene(current_scene)
+
+    def scene_editor_ui_group_label(group):
+        return scene_editor_ui_group_labels.get(group, str(group).replace("_", " ").title())
+
+    def scene_editor_ui_group_visible(group):
+        return bool(scene_editor_ui_group_visibility.get(group, True))
+
+    def scene_editor_toggle_ui_group(group):
+        if group not in scene_editor_ui_groups:
+            return
+        scene_editor_ui_group_visibility[group] = not scene_editor_ui_group_visible(group)
+        renpy.restart_interaction()
+
+    def scene_editor_ui_group_locked(group):
+        return group in scene_editor_ui_group_locks
+
+    def scene_editor_toggle_ui_group_lock(group):
+        if group not in scene_editor_ui_groups:
+            return
+        scene_editor_push_history()
+        tags = [tag for tag in scene_editor_ui_layer_panel_tags() if (scene_editor_ui_element(tag) or {}).get("group") == group]
+        if scene_editor_ui_group_locked(group):
+            scene_editor_ui_group_locks.discard(group)
+            for tag in tags:
+                scene_editor_locked_items.discard(scene_editor_item_key(scene_editor_ui_layer, tag))
+        else:
+            scene_editor_ui_group_locks.add(group)
+            for tag in tags:
+                scene_editor_locked_items.add(scene_editor_item_key(scene_editor_ui_layer, tag))
+        renpy.restart_interaction()
+
+    def scene_editor_ui_choice_values(prop):
+        if prop == "kind":
+            return ("text", "value", "panel")
+        if prop == "group":
+            return scene_editor_ui_groups
+        return ()
+
+    def scene_editor_cycle_ui_choice(key):
+        values = scene_editor_ui_choice_values(key[2])
+        if not values:
+            return
+        current = scene_editor_get_property_value(key, default=True)
+        try:
+            index = values.index(current)
+        except ValueError:
+            index = -1
+        scene_editor_set_value(key, values[(index + 1) % len(values)], push=True)
+
+    def scene_editor_ui_element(tag=None):
+        if tag is None:
+            tag = scene_editor_selected_tag
+        if tag is None:
+            return None
+        return scene_editor_ui_scene().get(tag)
+
+    def scene_editor_ui_tags(include_hidden=True):
+        items = []
+        for tag, element in scene_editor_ui_scene().items():
+            if not include_hidden:
+                if not element.get("visible", True) or not scene_editor_ui_group_visible(element.get("group", "overlays")):
+                    continue
+            items.append((tag, element.get("zorder", 0)))
+        items.sort(key=lambda item: (item[1], item[0]))
+        return [tag for tag, _z in items]
+
+    def scene_editor_ui_layer_panel_tags():
+        tags = scene_editor_ui_tags(include_hidden=True)
+        tags.reverse()
+        return tags
+
+    def scene_editor_ui_unique_tag(base="ui"):
+        global scene_editor_ui_counter
+        scene_editor_ui_counter += 1
+        candidate = "{}_{}".format(base, scene_editor_ui_counter)
+        while candidate in scene_editor_ui_scene():
+            scene_editor_ui_counter += 1
+            candidate = "{}_{}".format(base, scene_editor_ui_counter)
+        return candidate
+
+    def scene_editor_ui_default_element(kind="text", group="overlays"):
+        element = deepcopy(scene_editor_ui_property_defaults)
+        element["kind"] = kind
+        element["group"] = group if group in scene_editor_ui_groups else "overlays"
+        if kind == "value":
+            element["text"] = "Value"
+            element["bound_variable"] = "variable.name"
+        elif kind == "panel":
+            element["text"] = ""
+            element["background"] = "#00000080"
+        elif kind == "screen":
+            element["text"] = ""
+            element["background"] = "#00000000"
+            element["selectable"] = False
+        return element
+
+    def scene_editor_normalize_ui_element(element):
+        if not isinstance(element, dict):
+            element = {}
+        kind = element.get("kind", "text")
+        group = element.get("group", "overlays")
+        defaults = scene_editor_ui_default_element(kind, group)
+        defaults.update(element)
+        if defaults.get("kind") not in ("text", "value", "panel", "screen"):
+            defaults["kind"] = "text"
+        if defaults.get("group") not in scene_editor_ui_groups:
+            defaults["group"] = "overlays"
+        return defaults
+
+    def scene_editor_normalize_ui_scene(ui_scene):
+        if not isinstance(ui_scene, dict):
+            return {}
+        for tag in list(ui_scene.keys()):
+            ui_scene[tag] = scene_editor_normalize_ui_element(ui_scene[tag])
+        return ui_scene
+
+    def scene_editor_add_ui_element(kind="text", group="overlays"):
+        global scene_editor_selected_layer, scene_editor_selected_tag
+        if kind not in ("text", "value", "panel"):
+            kind = "text"
+        scene_editor_push_history()
+        tag = scene_editor_ui_unique_tag(kind)
+        scene_editor_ui_scene()[tag] = scene_editor_ui_default_element(kind, group)
+        scene_editor_selected_layer = scene_editor_ui_layer
+        scene_editor_selected_tag = tag
+        scene_editor_clear_runtime_caches()
+        change_time(current_time)
+
+    def scene_editor_remove_ui_element(tag):
+        if tag in scene_editor_ui_scene():
+            del scene_editor_ui_scene()[tag]
+        try:
+            scene_editor_ui_captured_displayables[current_scene].pop(tag, None)
+        except Exception:
+            pass
+        key = scene_editor_item_key(scene_editor_ui_layer, tag)
+        scene_editor_locked_items.discard(key)
+        scene_editor_hidden_items.discard(key)
+        if key in scene_editor_group_members:
+            del scene_editor_group_members[key]
+
+    def scene_editor_get_property_value(key, default=False):
+        tag, layer, prop = key
+        if scene_editor_is_ui_layer(layer):
+            element = scene_editor_ui_scene().get(tag, {})
+            if prop in element:
+                return element[prop]
+            if default:
+                return scene_editor_ui_property_defaults.get(prop)
+            return None
+        return get_value(key, default=default)
+
+    def scene_editor_set_property_value(key, value):
+        tag, layer, prop = key
+        if scene_editor_is_ui_layer(layer):
+            element = scene_editor_ui_scene().setdefault(tag, scene_editor_ui_default_element())
+            element[prop] = value
+            return
+        set_keyframe(key, value, time=current_time)
+
+    def scene_editor_direct_number(value, fallback=0):
+        if value is None:
+            return fallback
+        try:
+            return float(value)
+        except Exception:
+            return fallback
+
+    def scene_editor_reset_property_value(key):
+        tag, layer, prop = key
+        if scene_editor_is_ui_layer(layer):
+            default = scene_editor_ui_property_defaults.get(prop)
+            if default is not None:
+                scene_editor_ui_scene().setdefault(tag, scene_editor_ui_default_element())[prop] = deepcopy(default)
+            return
+        reset(key)
+
+    def scene_editor_ui_display_text(element):
+        if element.get("kind") == "value":
+            binding = element.get("bound_variable", "")
+            if binding:
+                try:
+                    return str(renpy.python.py_eval(binding))
+                except Exception:
+                    return "[" + binding + "]"
+        return element.get("text", "")
+
+    def scene_editor_hud_screen_displayable():
+        hud = Fixed(xsize=config.screen_width, ysize=config.screen_height)
+        time_panel = Fixed(xsize=250, ysize=118)
+        time_panel.add(Solid("#000000a0", xsize=250, ysize=118))
+        time_panel.add(Transform(Text(scene_editor_ui_display_text({"kind": "value", "bound_variable": '"{} - Day {}".format(weekday_name(), day)'}), size=22, color="#ffffff"), xpos=16, ypos=12))
+        time_panel.add(Transform(Text(scene_editor_ui_display_text({"kind": "value", "bound_variable": 'convert_to_12hr_format(time)'}), size=22, color="#ffd27a"), xpos=16, ypos=44))
+        time_panel.add(Transform(Text(scene_editor_ui_display_text({"kind": "value", "bound_variable": '"Stamina: {}/{}".format(stamina, get_max_stamina())'}), size=20, color="#aef0ae"), xpos=16, ypos=74))
+        hud.add(Transform(time_panel, xpos=20, ypos=20))
+
+        location_bar = scene_editor_build_child_displayable("ui_hud_location", None)
+        if location_bar is not None:
+            hud.add(Transform(location_bar, fit="contain", xsize=760, ysize=98, xpos=0.5, ypos=-6, xanchor=0.5, yanchor=0.0))
+        hud.add(Transform(Text(scene_editor_ui_display_text({"kind": "value", "bound_variable": "location_name()"}), size=28, color="#ffffff", outlines=[(2, "#000000", 0, 0)], xsize=700, text_align=0.5), xpos=0.5, ypos=22, xanchor=0.5))
+        objective = scene_editor_ui_display_text({"kind": "value", "bound_variable": 'quest_target_for_current_location() or ""'})
+        if objective:
+            hud.add(Transform(Text(objective, size=16, color="#ffd27a", xsize=720, text_align=0.5), xpos=0.5, ypos=96, xanchor=0.5))
+
+        hud.add(Transform(Text("Quests", size=16, color="#ffffff"), xpos=config.screen_width - 300, ypos=29))
+        hud.add(Transform(Text("Inventory", size=16, color="#ffffff"), xpos=config.screen_width - 220, ypos=29))
+        chars = scene_editor_build_child_displayable("ui_hud_characters", None)
+        if chars is not None:
+            hud.add(Transform(chars, fit="contain", xsize=110, ysize=110, xpos=config.screen_width - 130, ypos=7))
+        return hud
+
+    def scene_editor_screen_fallback_displayable(screen_name):
+        if screen_name == "hud":
+            return scene_editor_hud_screen_displayable()
+        return None
+
+    def scene_editor_ui_displayable(tag):
+        element = scene_editor_ui_element(tag)
+        if not element:
+            return None
+        if element.get("group") in ("dialogue_box", "choices") and (not scene_editor_preview_dialogue or not scene_editor_current_dialogue_visible()):
+            return None
+        if scene_editor_item_hidden(scene_editor_ui_layer, tag):
+            return None
+        if not element.get("visible", True):
+            return None
+        if not scene_editor_ui_group_visible(element.get("group", "overlays")):
+            return None
+        if element.get("kind") == "screen":
+            try:
+                child = scene_editor_ui_captured_displayables[current_scene].get(tag)
+            except Exception:
+                child = None
+            if child is not None:
+                return SceneEditorFixedTimeDisplayable(child, current_time, 0)
+            screen_name = element.get("source_screen")
+            if screen_name:
+                try:
+                    screen = renpy.get_screen(screen_name)
+                    if screen is not None:
+                        return SceneEditorFixedTimeDisplayable(screen, current_time, 0)
+                except Exception:
+                    pass
+                fallback = scene_editor_screen_fallback_displayable(screen_name)
+                if fallback is not None:
+                    return fallback
+            return None
+        image_name = element.get("image", "")
+        if image_name:
+            try:
+                child = scene_editor_build_child_displayable(image_name, None)
+            except Exception:
+                child = None
+            if child is None:
+                child = Solid(element.get("background", "#00000000"), xsize=int(element.get("xsize", 220)), ysize=int(element.get("ysize", 48)))
+            else:
+                child = Transform(child, fit="contain", xsize=int(element.get("xsize", 220)), ysize=int(element.get("ysize", 48)))
+        elif element.get("kind") == "panel":
+            child = Solid(element.get("background", "#00000080"), xsize=int(element.get("xsize", 220)), ysize=int(element.get("ysize", 48)))
+        else:
+            child = Text(scene_editor_ui_display_text(element), size=int(element.get("size", 32)), color=element.get("color", "#FFFFFF"), xsize=element.get("xsize", None))
+        kwargs = {}
+        for prop in ("xpos", "ypos", "xanchor", "yanchor", "xoffset", "yoffset", "zoom", "xzoom", "yzoom", "rotate", "alpha"):
+            if prop in element:
+                kwargs[prop] = element[prop]
+        return Transform(child, **kwargs)
+
+    def scene_editor_dialogue_preview_displayable():
+        if not scene_editor_preview_dialogue or not scene_editor_current_dialogue_visible():
+            return None
+        entries = scene_editor_dialogue_entries()
+        if not entries:
+            return None
+        entry = scene_editor_dialogue_entry() or entries[0]
+        if entry.get("type") not in ("line", "choice", "reaction"):
+            return None
+        speaker = scene_editor_character_label(entry.get("speaker", ""))
+        text = entry.get("text", "")
+        if entry.get("type") == "choice":
+            text = " / ".join(choice.get("caption", "") for choice in entry.get("choices", []) if choice.get("caption")) or text
+        if not text:
+            return None
+        label = "{}: {}".format(speaker, text) if speaker else text
+        return Transform(Text(label, size=28, color="#FFFFFF"), xpos=0.5, ypos=0.88, xanchor=0.5, yanchor=0.5)
+
+    def scene_editor_render_ui_scene(target):
+        if not scene_editor_ui_scene_visible:
+            return 0
+        count = 0
+        for tag in scene_editor_ui_tags(include_hidden=False):
+            displayable = scene_editor_ui_displayable(tag)
+            if displayable is not None:
+                target.add(displayable)
+                count += 1
+        dialogue_preview = scene_editor_dialogue_preview_displayable()
+        if dialogue_preview is not None:
+            target.add(dialogue_preview)
+            count += 1
+        return count
+
+    def scene_editor_drag_name(kind, *parts):
+        return tuple([kind] + list(parts))
+
+    def scene_editor_drag_payload(drag):
+        try:
+            return drag.drag_name
+        except Exception:
+            return None
+
+    def scene_editor_dragged_noop(drags, drop=None):
+        return
+
+    def scene_editor_drop_scene_tree(drags, drop=None):
+        if not drags:
+            return
+        payload = scene_editor_drag_payload(drags[0])
+        target = scene_editor_drag_payload(drop)
+        if not payload or not target:
+            return
+        if payload[0] == "image" and target[0] == "frame":
+            scene_editor_move_image_to_scene(payload[1], payload[2], payload[3], target[1])
+            return
+        if payload[0] == "asset":
+            scene_editor_drop_asset_on_target(payload[1], target)
+
+    def scene_editor_drop_asset_on_stage(drags, drop=None):
+        if not drags:
+            return
+        payload = scene_editor_drag_payload(drags[0])
+        if payload and payload[0] == "asset":
+            scene_editor_drop_asset_on_target(payload[1], ("stage", current_scene))
+
+    def scene_editor_drop_asset_on_target(image_name, target):
+        layer = scene_editor_selected_layer
+        if scene_editor_is_ui_layer(layer):
+            layer = "master"
+        if target and target[0] == "layer":
+            layer = target[2]
+            if target[1] != current_scene:
+                scene_editor_change_scene(target[1])
+        elif target and target[0] == "frame" and target[1] != current_scene:
+            scene_editor_change_scene(target[1])
+        scene_editor_apply_image_name(image_name, layer, None)
+
+    def scene_editor_move_image_to_scene(source_scene, layer, tag, target_scene):
+        global current_scene, scene_editor_selected_layer, scene_editor_selected_tag
+        if source_scene == target_scene:
+            return
+        if source_scene < 0 or source_scene >= len(scene_keyframes):
+            return
+        if target_scene < 0 or target_scene >= len(scene_keyframes):
+            return
+        state = get_image_state(layer, source_scene)
+        if tag not in state:
+            return
+        scene_editor_push_history()
+        moved_state = deepcopy(state[tag])
+        moved_displayable = scene_editor_captured_displayables[source_scene].get(layer, {}).get(tag)
+        target_tag = scene_editor_unique_tag(tag, layer)
+        old_scene = current_scene
+        current_scene = target_scene
+        target_tag = scene_editor_unique_tag(tag, layer)
+        if target_tag is None:
+            current_scene = old_scene
+            renpy.notify(_("too many same tag images is used"))
+            return
+        image_state[target_scene].setdefault(layer, {})[target_tag] = deepcopy(moved_state)
+        image_state_org[target_scene].setdefault(layer, {})[target_tag] = deepcopy(moved_state)
+        scene_editor_captured_displayables[target_scene].setdefault(layer, {})[target_tag] = moved_displayable
+        zorder_list[target_scene].setdefault(layer, []).append((target_tag, len(zorder_list[target_scene].setdefault(layer, []))))
+        for prop, value in moved_state.items():
+            if prop not in ("at_list", "_captured_raw"):
+                all_keyframes[target_scene][(target_tag, layer, prop)] = [(deepcopy(value), scene_keyframes[target_scene][1], persistent._viewer_warper)]
+        current_scene = source_scene
+        scene_editor_remove_image(layer, tag)
+        current_scene = target_scene
+        scene_editor_selected_layer = layer
+        scene_editor_selected_tag = target_tag
+        scene_editor_tree_expanded.add(scene_editor_tree_key("frame", target_scene, target_scene))
+        scene_editor_clear_runtime_caches()
+        change_time(scene_keyframes[target_scene][1])
+
+    def scene_editor_ui_upsert(tag, kind, group, **values):
+        scene = scene_editor_ui_scene()
+        element = scene.setdefault(tag, scene_editor_ui_default_element(kind, group))
+        element["kind"] = kind
+        element["group"] = group if group in scene_editor_ui_groups else "overlays"
+        for key, value in values.items():
+            element[key] = deepcopy(value)
+        return element
+
+    def scene_editor_ui_capture_displayable(tag, displayable):
+        while len(scene_editor_ui_captured_displayables) <= current_scene:
+            scene_editor_ui_captured_displayables.append({})
+        scene_editor_ui_captured_displayables[current_scene][tag] = displayable
+
+    def scene_editor_ui_screen_is_captured(screen_name):
+        if not screen_name:
+            return False
+        try:
+            for tag, displayable in scene_editor_ui_captured_displayables[current_scene].items():
+                element = scene_editor_ui_scene().get(tag, {})
+                if element.get("source_screen") == screen_name and displayable is not None:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def scene_editor_screen_showing(name, layer="screens"):
+        try:
+            return renpy.get_screen(name, layer=layer) is not None
+        except Exception:
+            try:
+                return renpy.get_screen(name) is not None
+            except Exception:
+                return False
+
+    def scene_editor_screen_variable(screen_name, variable, fallback=None, layer="screens"):
+        getter = getattr(renpy, "get_screen_variable", None)
+        if not callable(getter):
+            return fallback
+        try:
+            value = getter(variable, screen=screen_name, layer=layer)
+        except Exception:
+            try:
+                value = getter(variable, screen_name, layer)
+            except Exception:
+                return fallback
+        return fallback if value is None else value
+
+    def scene_editor_screen_displayable_name(displayable, fallback):
+        for attr in ("screen_name", "screen", "name", "tag"):
+            try:
+                value = getattr(displayable, attr, None)
+                if value:
+                    return str(value)
+            except Exception:
+                pass
+        return str(fallback or "screen")
+
+    def scene_editor_capture_active_screen_layers():
+        if not scene_editor_screen_displayable:
+            return
+        sle = scene_editor_scene_lists()
+        if sle is None:
+            return
+        screen_layers = [layer for layer in ("screens", "overlay", "transient") if layer in getattr(config, "layers", ())]
+        for layer in screen_layers:
+            try:
+                layer_entries = list(sle.layers[layer])
+            except Exception:
+                layer_entries = []
+            for index, entry in enumerate(layer_entries):
+                tag = scene_editor_entry_tag(entry)
+                try:
+                    displayable = sle.get_displayable_by_tag(layer, tag)
+                except Exception:
+                    displayable = None
+                if not isinstance(displayable, scene_editor_screen_displayable):
+                    continue
+                screen_name = scene_editor_screen_displayable_name(displayable, tag)
+                safe_tag = scene_editor_safe_identifier("screen_{}_{}".format(layer, screen_name), "screen_ui")
+                try:
+                    zorder = scene_editor_entry_zorder(entry, index)
+                except Exception:
+                    zorder = 200 + index
+                group = "dialogue_box" if screen_name == "say" else ("choices" if screen_name == "choice" else "overlays")
+                scene_editor_ui_upsert(safe_tag, "screen", group, text=screen_name, xpos=0, ypos=0, xanchor=0.0, yanchor=0.0, xsize=config.screen_width, ysize=config.screen_height, zorder=zorder, selectable=False, source_screen=screen_name, source_layer=layer, source_role="active_screen")
+                scene_editor_ui_capture_displayable(safe_tag, displayable)
+
+    def scene_editor_seed_say_ui(who=None, what=None):
+        scene_editor_ui_upsert("say_window", "panel", "dialogue_box", text="", background="#0000000d", xpos=0.5, ypos=1.0, xanchor=0.5, yanchor=1.0, xsize=config.screen_width, ysize=240, zorder=160, source_screen="say", source_role="window")
+        scene_editor_ui_upsert("say_name_plate", "panel", "dialogue_box", text="", background="#ffffff77", xpos=60, ypos=config.screen_height - 170, xanchor=0.0, yanchor=0.0, xsize=220, ysize=52, zorder=161, source_screen="say", source_role="who_plate")
+        scene_editor_ui_upsert("say_who", "text", "dialogue_box", text=str(who or "Speaker"), xpos=150, ypos=config.screen_height - 154, xanchor=0.5, yanchor=0.0, size=28, color="#ffffff", xsize=220, zorder=162, source_screen="say", source_role="who")
+        scene_editor_ui_upsert("say_what", "text", "dialogue_box", text=str(what or "Dialogue text"), xpos=270, ypos=config.screen_height - 150, xanchor=0.0, yanchor=0.0, size=30, color="#ffffff", xsize=max(200, config.screen_width - 360), zorder=162, source_screen="say", source_role="what")
+        scene_editor_ui_upsert("say_hide_button", "text", "dialogue_box", text="◉", xpos=config.screen_width - 58, ypos=config.screen_height - 58, xanchor=0.5, yanchor=0.5, size=32, color="#ffffffcc", zorder=163, source_screen="say", source_role="hide_interface")
+
+    def scene_editor_choice_captions():
+        items = scene_editor_screen_variable("choice", "items", None)
+        captions = []
+        if items:
+            for item in items:
+                caption = getattr(item, "caption", None)
+                if caption:
+                    captions.append(str(caption))
+        return captions
+
+    def scene_editor_seed_choice_ui(captions=None):
+        captions = captions or ["Choice"]
+        count = max(1, len(captions))
+        panel_height = max(80, count * 58 + 32)
+        scene_editor_ui_upsert("choice_panel", "panel", "choices", text="", background="#00000099", xpos=0.5, ypos=0.5, xanchor=0.5, yanchor=0.5, xsize=720, ysize=panel_height, zorder=170, source_screen="choice", source_role="panel")
+        for index, caption in enumerate(captions[:8]):
+            scene_editor_ui_upsert("choice_option_{:02d}".format(index + 1), "text", "choices", text=str(caption), xpos=0.5, ypos=0.5, xanchor=0.5, yanchor=0.5, yoffset=(index - (count - 1) / 2.0) * 58, size=26, color="#ffffff", xsize=660, zorder=171 + index, source_screen="choice", source_role="option")
+
+    def scene_editor_seed_hud_ui():
+        if getattr(renpy.store, "hud_visible", True) is False:
+            return
+        scene_editor_ui_upsert("hud_time_panel", "panel", "time", text="", background="#000000a0", xpos=20, ypos=20, xanchor=0.0, yanchor=0.0, xsize=250, ysize=118, zorder=100, source_screen="hud", source_role="time_panel")
+        scene_editor_ui_upsert("hud_day", "value", "time", text="Day", bound_variable='"{} - Day {}".format(weekday_name(), day)', xpos=36, ypos=34, xanchor=0.0, yanchor=0.0, size=22, color="#ffffff", xsize=220, zorder=101, source_screen="hud", source_role="day")
+        scene_editor_ui_upsert("hud_time", "value", "time", text="Time", bound_variable='convert_to_12hr_format(time)', xpos=36, ypos=62, xanchor=0.0, yanchor=0.0, size=22, color="#ffd27a", xsize=220, zorder=101, source_screen="hud", source_role="time")
+        scene_editor_ui_upsert("hud_stamina", "value", "stats", text="Stamina", bound_variable='"Stamina: {}/{}".format(stamina, get_max_stamina())', xpos=36, ypos=90, xanchor=0.0, yanchor=0.0, size=20, color="#aef0ae", xsize=240, zorder=101, source_screen="hud", source_role="stamina")
+        scene_editor_ui_upsert("hud_location_bar", "panel", "indicators", text="", background="#00000000", image="ui_hud_location", xpos=0.5, ypos=0.0, xanchor=0.5, yanchor=0.0, yoffset=-6, xsize=760, ysize=98, zorder=102, source_screen="hud", source_role="location_bar")
+        scene_editor_ui_upsert("hud_location_name", "value", "indicators", text="Location", bound_variable="location_name()", xpos=0.5, ypos=24, xanchor=0.5, yanchor=0.0, size=28, color="#ffffff", xsize=700, zorder=103, source_screen="hud", source_role="location_name")
+        scene_editor_ui_upsert("hud_objective", "value", "indicators", text="Objective", bound_variable='quest_target_for_current_location() or ""', xpos=0.5, ypos=96, xanchor=0.5, yanchor=0.0, size=16, color="#ffd27a", xsize=720, zorder=103, source_screen="hud", source_role="objective")
+        scene_editor_ui_upsert("hud_quests_button", "text", "overlays", text="Quests", xpos=config.screen_width - 265, ypos=28, xanchor=0.5, yanchor=0.0, size=16, color="#ffffff", zorder=104, source_screen="hud", source_role="quests_button")
+        scene_editor_ui_upsert("hud_inventory_button", "text", "overlays", text="Inventory", xpos=config.screen_width - 180, ypos=28, xanchor=0.5, yanchor=0.0, size=16, color="#ffffff", zorder=104, source_screen="hud", source_role="inventory_button")
+        scene_editor_ui_upsert("hud_characters_button", "panel", "overlays", text="", background="#00000000", image="ui_hud_characters", xpos=config.screen_width - 75, ypos=7, xanchor=0.5, yanchor=0.0, xsize=110, ysize=110, zorder=104, source_screen="hud", source_role="characters_button")
+
+    def scene_editor_speaker_id_from_who(who):
+        last_speaker = getattr(renpy.store, "_last_speaker", None)
+        if last_speaker:
+            return str(last_speaker)
+        who = str(who or "").strip()
+        if not who:
+            return ""
+        for char_id, label in scene_editor_known_characters():
+            if who == label or who.lower() == str(label).lower() or who == char_id:
+                return char_id
+        return who
+
+    def scene_editor_capture_runtime_dialogue(who=None, what=None):
+        global scene_editor_selected_dialogue_entry_id
+        dialogue_scene = scene_editor_dialogue_scene()
+        try:
+            cast = getattr(renpy.store, "_dialogue_cast", None)
+            if isinstance(cast, dict):
+                dialogue_scene["cast"] = deepcopy(cast)
+        except Exception:
+            pass
+        dialogue_scene["active"] = bool(getattr(renpy.store, "_in_dialogue", None))
+        if what is None:
+            what = scene_editor_screen_variable("say", "what", None)
+        if who is None:
+            who = scene_editor_screen_variable("say", "who", None)
+        if what:
+            entries = dialogue_scene.setdefault("entries", [])
+            if not entries:
+                entry = scene_editor_new_dialogue_entry("line" if who else "narration")
+                entry["speaker"] = scene_editor_speaker_id_from_who(who)
+                entry["text"] = str(what)
+                entry["frame_id"] = scene_editor_current_frame_id()
+                entries.append(entry)
+                scene_editor_selected_dialogue_entry_id = entry["id"]
+
+    def scene_editor_capture_live_studio_context():
+        who = scene_editor_screen_variable("say", "who", None)
+        what = scene_editor_screen_variable("say", "what", None)
+        if scene_editor_screen_showing("say") or what or who:
+            scene_editor_seed_say_ui(who, what)
+        else:
+            scene_editor_seed_say_ui()
+        captions = scene_editor_choice_captions()
+        if scene_editor_screen_showing("choice") or captions:
+            scene_editor_seed_choice_ui(captions)
+        else:
+            scene_editor_seed_choice_ui(["Choice 1", "Choice 2"])
+        if scene_editor_screen_showing("hud") or hasattr(renpy.store, "hud_visible"):
+            scene_editor_seed_hud_ui()
+        scene_editor_capture_active_screen_layers()
+        scene_editor_capture_runtime_dialogue(who, what)
+
+    def scene_editor_screen_to_ui_stage(x, y):
+        offset_x, offset_y, scale = scene_editor_canvas_offsets()
+        if scale == 0:
+            return (x - offset_x, y - offset_y)
+        return ((x - offset_x) / scale, (y - offset_y) / scale)
+
+    def scene_editor_ensure_frame_records():
+        global scene_editor_frame_counter
+        while len(scene_editor_frame_records) < len(scene_keyframes):
+            scene_index = len(scene_editor_frame_records)
+            scene_editor_frame_counter += 1
+            new_id = "frame_{:03d}".format(scene_editor_frame_counter)
+            parent_id = scene_editor_frame_records[-1]["id"] if scene_editor_frame_records else None
+            scene_editor_frame_records.append({
+                "id": new_id,
+                "route_id": scene_editor_current_route_id,
+                "name": "Frame {}".format(scene_index),
+                "scene_index": scene_index,
+                "parent_id": parent_id,
+                "time": scene_keyframes[scene_index][1] if scene_index < len(scene_keyframes) else 0,
+                "inherits": parent_id is not None,
+            })
+        while len(scene_editor_frame_records) > len(scene_keyframes):
+            scene_editor_frame_records.pop()
+        for index, record in enumerate(scene_editor_frame_records):
+            if not record.get("id"):
+                scene_editor_frame_counter += 1
+                record["id"] = "frame_{:03d}".format(scene_editor_frame_counter)
+            record.setdefault("route_id", scene_editor_current_route_id)
+            record.setdefault("name", "Frame {}".format(index))
+            record.setdefault("dialogue_visible", True)
+            record.setdefault("notes", "")
+            record["scene_index"] = index
+            if index < len(scene_keyframes):
+                record["time"] = scene_keyframes[index][1]
+            if index == 0:
+                record["parent_id"] = None
+                record["inherits"] = False
+            elif record.get("inherits", True) and not record.get("parent_id"):
+                record["parent_id"] = scene_editor_frame_records[index - 1]["id"]
+            elif not record.get("inherits", True):
+                record["parent_id"] = None
+        return scene_editor_frame_records
+
+    def scene_editor_current_frame_record():
+        scene_editor_ensure_frame_records()
+        if current_scene < 0 or current_scene >= len(scene_editor_frame_records):
+            return None
+        return scene_editor_frame_records[current_scene]
+
+    def scene_editor_current_frame_id():
+        record = scene_editor_current_frame_record()
+        return record.get("id") if record else None
+
+    def scene_editor_current_frame_label():
+        record = scene_editor_current_frame_record()
+        if not record:
+            return "No Frame"
+        parent = record.get("parent_id") or "root"
+        return "{} · {}".format(record.get("id", "frame"), parent)
+
+    def scene_editor_frame_children(scene_num=None):
+        scene_editor_ensure_frame_records()
+        if scene_num is None:
+            scene_num = current_scene
+        if scene_num < 0 or scene_num >= len(scene_editor_frame_records):
+            return []
+        parent_id = scene_editor_frame_records[scene_num].get("id")
+        return [index for index, record in enumerate(scene_editor_frame_records) if record.get("parent_id") == parent_id]
+
+    def scene_editor_frame_depth(scene_num):
+        scene_editor_ensure_frame_records()
+        if scene_num < 0 or scene_num >= len(scene_editor_frame_records):
+            return 0
+        depth = 0
+        seen = set()
+        parent_id = scene_editor_frame_records[scene_num].get("parent_id")
+        while parent_id and parent_id not in seen:
+            seen.add(parent_id)
+            parent_index = None
+            for index, record in enumerate(scene_editor_frame_records):
+                if record.get("id") == parent_id:
+                    parent_index = index
+                    break
+            if parent_index is None:
+                break
+            depth += 1
+            parent_id = scene_editor_frame_records[parent_index].get("parent_id")
+        return min(depth, 12)
+
+    def scene_editor_frame_tree_rows():
+        scene_editor_ensure_frame_records()
+        return [(index, scene_editor_frame_depth(index), record) for index, record in enumerate(scene_editor_frame_records)]
+
+    def scene_editor_next_frame_index():
+        if current_scene + 1 < len(scene_keyframes):
+            return current_scene + 1
+        return current_scene
+
+    def scene_editor_previous_frame_index():
+        return max(0, current_scene - 1)
+
+    def scene_editor_parent_frame_index():
+        record = scene_editor_current_frame_record()
+        if not record:
+            return current_scene
+        parent_id = record.get("parent_id")
+        if not parent_id:
+            return current_scene
+        for index, frame in enumerate(scene_editor_frame_records):
+            if frame.get("id") == parent_id:
+                return index
+        return current_scene
+
+    def scene_editor_first_child_frame_index():
+        children = scene_editor_frame_children(current_scene)
+        if children:
+            return children[0]
+        return current_scene
+
+    def scene_editor_go_previous_frame():
+        scene_editor_change_scene(scene_editor_previous_frame_index())
+
+    def scene_editor_go_next_frame():
+        scene_editor_change_scene(scene_editor_next_frame_index())
+
+    def scene_editor_go_parent_frame():
+        scene_editor_change_scene(scene_editor_parent_frame_index())
+
+    def scene_editor_go_child_frame():
+        scene_editor_change_scene(scene_editor_first_child_frame_index())
+
+    def scene_editor_ensure_dialogue_scene(scene_num=None):
+        if scene_num is None:
+            scene_num = current_scene
+        while len(scene_editor_dialogue_scenes) <= scene_num:
+            scene_editor_dialogue_scenes.append({"entries": []})
+        scene_data = scene_editor_dialogue_scenes[scene_num]
+        scene_data.setdefault("entries", [])
+        scene_editor_dialogue_scenes[scene_num] = scene_editor_normalize_dialogue_scene(scene_data)
+        return scene_editor_dialogue_scenes[scene_num]
+
+    def scene_editor_dialogue_scene():
+        return scene_editor_ensure_dialogue_scene(current_scene)
+
+    def scene_editor_dialogue_entries():
+        return scene_editor_dialogue_scene().get("entries", [])
+
+    def scene_editor_choice_default(caption="Choice", target=""):
+        return {"caption": caption, "target": target, "condition": "", "script": "", "merge_target": ""}
+
+    def scene_editor_normalize_dialogue_entry(entry):
+        if not isinstance(entry, dict):
+            entry = scene_editor_new_dialogue_entry("line")
+        if not entry.get("id"):
+            entry["id"] = scene_editor_new_dialogue_entry(entry.get("type", "line")).get("id")
+        entry.setdefault("type", "line")
+        if entry.get("type") not in scene_editor_dialogue_entry_types:
+            entry["type"] = "line"
+        entry.setdefault("speaker", "")
+        entry.setdefault("text", "")
+        entry.setdefault("target", "")
+        entry.setdefault("condition", "")
+        entry.setdefault("payload", "")
+        entry.setdefault("on_show", "")
+        entry.setdefault("on_advance", "")
+        entry.setdefault("on_select", "")
+        if entry.get("type") == "choice":
+            choices = entry.setdefault("choices", [])
+            if not choices:
+                choices.append(scene_editor_choice_default(entry.get("text", "Choice"), entry.get("target", "")))
+            for index, choice in enumerate(list(choices)):
+                if not isinstance(choice, dict):
+                    choice = scene_editor_choice_default(str(choice), "")
+                    choices[index] = choice
+                choice.setdefault("caption", entry.get("text", "Choice"))
+                choice.setdefault("target", "")
+                choice.setdefault("condition", "")
+                choice.setdefault("script", "")
+                choice.setdefault("merge_target", "")
+            entry["text"] = choices[0].get("caption", entry.get("text", ""))
+            entry["target"] = choices[0].get("target", entry.get("target", ""))
+        return entry
+
+    def scene_editor_normalize_dialogue_scene(dialogue_scene):
+        if not isinstance(dialogue_scene, dict):
+            dialogue_scene = {"entries": []}
+        entries = dialogue_scene.setdefault("entries", [])
+        for index in range(len(entries)):
+            entries[index] = scene_editor_normalize_dialogue_entry(entries[index])
+        return dialogue_scene
+
+    def scene_editor_current_dialogue_visible():
+        record = scene_editor_current_frame_record()
+        if not record:
+            return True
+        return bool(record.get("dialogue_visible", True))
+
+    def scene_editor_toggle_current_dialogue_visible():
+        record = scene_editor_current_frame_record()
+        if not record:
+            return
+        scene_editor_push_history()
+        record["dialogue_visible"] = not bool(record.get("dialogue_visible", True))
+        renpy.restart_interaction()
+
+    def scene_editor_known_characters():
+        characters = []
+        seen = set()
+        def add_character(char_id, label=None):
+            if not char_id:
+                return
+            char_id = str(char_id)
+            if char_id in seen:
+                return
+            seen.add(char_id)
+            characters.append((char_id, label or scene_editor_character_label(char_id)))
+        try:
+            speakers = getattr(renpy.store, "character_speakers", None)
+            if isinstance(speakers, dict):
+                for char_id, character in sorted(speakers.items()):
+                    label = char_id
+                    for attr in ("name", "_name"):
+                        try:
+                            value = getattr(character, attr)
+                            if value:
+                                label = str(value)
+                                break
+                        except Exception:
+                            pass
+                    add_character(char_id, label)
+        except Exception:
+            pass
+        try:
+            stats = getattr(renpy.store, "character_stats", None)
+            if isinstance(stats, dict):
+                for char_id in sorted(stats.keys()):
+                    add_character(char_id)
+        except Exception:
+            pass
+        try:
+            known = getattr(renpy.store, "_dialogue_known_characters", None)
+            if callable(known):
+                for char_id in known():
+                    add_character(char_id)
+        except Exception:
+            pass
+        return characters
+
+    def scene_editor_character_label(char_id):
+        char_id = str(char_id or "").strip()
+        if not char_id:
+            return ""
+        try:
+            speakers = getattr(renpy.store, "character_speakers", None)
+            if isinstance(speakers, dict) and char_id in speakers:
+                character = speakers[char_id]
+                for attr in ("name", "_name", "who_prefix"):
+                    try:
+                        value = getattr(character, attr)
+                        if isinstance(value, str) and value.strip():
+                            return value
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return char_id[:1].upper() + char_id[1:]
+
+    def scene_editor_set_dialogue_speaker(entry_id, speaker):
+        scene_editor_set_dialogue_field(entry_id, "speaker", speaker)
+
+    def scene_editor_add_choice_option(entry_id=None):
+        entry = scene_editor_dialogue_entry(entry_id)
+        if not entry or entry.get("type") != "choice":
+            return
+        scene_editor_push_history()
+        choices = entry.setdefault("choices", [])
+        choices.append(scene_editor_choice_default("Choice {}".format(len(choices) + 1), ""))
+        renpy.restart_interaction()
+
+    def scene_editor_remove_choice_option(entry_id, index):
+        entry = scene_editor_dialogue_entry(entry_id)
+        if not entry or entry.get("type") != "choice":
+            return
+        choices = entry.setdefault("choices", [])
+        if index < 0 or index >= len(choices):
+            return
+        scene_editor_push_history()
+        del choices[index]
+        if not choices:
+            choices.append(scene_editor_choice_default())
+        renpy.restart_interaction()
+
+    def scene_editor_set_choice_field(entry_id, index, field, value):
+        entry = scene_editor_dialogue_entry(entry_id)
+        if not entry or entry.get("type") != "choice":
+            return
+        choices = entry.setdefault("choices", [])
+        if index < 0 or index >= len(choices):
+            return
+        old_value = choices[index].get(field)
+        if old_value != value:
+            scene_editor_push_history()
+        choices[index][field] = value
+        if index == 0:
+            if field == "caption":
+                entry["text"] = value
+            elif field == "target":
+                entry["target"] = value
+        renpy.restart_interaction()
+
+    def scene_editor_choice_field_changed(entry_id, index, field):
+        def changed(value):
+            scene_editor_set_choice_field(entry_id, index, field, value)
+        return changed
+
+    def scene_editor_new_dialogue_entry(entry_type="line"):
+        global scene_editor_dialogue_entry_counter
+        if entry_type not in scene_editor_dialogue_entry_types:
+            entry_type = "line"
+        scene_editor_dialogue_entry_counter += 1
+        entry = {
+            "id": "dlg_{:03d}".format(scene_editor_dialogue_entry_counter),
+            "type": entry_type,
+            "speaker": "",
+            "text": "New {}".format(entry_type),
+            "target": "",
+            "condition": "",
+            "payload": "",
+            "on_show": "",
+            "on_advance": "",
+            "on_select": "",
+        }
+        if entry_type == "choice":
+            entry["choices"] = [scene_editor_choice_default()]
+        return entry
+
+    def scene_editor_add_dialogue_entry(entry_type="line"):
+        global scene_editor_selected_dialogue_entry_id
+        scene_editor_push_history()
+        entry = scene_editor_new_dialogue_entry(entry_type)
+        scene_editor_dialogue_entries().append(entry)
+        scene_editor_selected_dialogue_entry_id = entry["id"]
+        renpy.restart_interaction()
+
+    def scene_editor_dialogue_entry(entry_id=None):
+        if entry_id is None:
+            entry_id = scene_editor_selected_dialogue_entry_id
+        for entry in scene_editor_dialogue_entries():
+            if entry.get("id") == entry_id:
+                return entry
+        return None
+
+    def scene_editor_select_dialogue_entry(entry_id):
+        global scene_editor_selected_dialogue_entry_id
+        scene_editor_selected_dialogue_entry_id = entry_id
+        renpy.restart_interaction()
+
+    def scene_editor_remove_dialogue_entry(entry_id=None):
+        global scene_editor_selected_dialogue_entry_id
+        if entry_id is None:
+            entry_id = scene_editor_selected_dialogue_entry_id
+        if entry_id is None:
+            return
+        entries = scene_editor_dialogue_entries()
+        for index, entry in enumerate(list(entries)):
+            if entry.get("id") == entry_id:
+                scene_editor_push_history()
+                del entries[index]
+                scene_editor_selected_dialogue_entry_id = None
+                renpy.restart_interaction()
+                return
+
+    def scene_editor_move_dialogue_entry(entry_id, direction):
+        entries = scene_editor_dialogue_entries()
+        for index, entry in enumerate(entries):
+            if entry.get("id") == entry_id:
+                new_index = index + direction
+                if new_index < 0 or new_index >= len(entries):
+                    return
+                scene_editor_push_history()
+                entries[index], entries[new_index] = entries[new_index], entries[index]
+                renpy.restart_interaction()
+                return
+
+    def scene_editor_set_dialogue_field(entry_id, field, value):
+        entry = scene_editor_dialogue_entry(entry_id)
+        if entry is None:
+            return
+        if entry.get(field) != value:
+            scene_editor_push_history()
+        entry[field] = value
+        if entry.get("type") == "choice" and field in ("text", "target"):
+            choices = entry.setdefault("choices", [scene_editor_choice_default(entry.get("text", "Choice"), entry.get("target", ""))])
+            if not choices:
+                choices.append(scene_editor_choice_default(entry.get("text", "Choice"), entry.get("target", "")))
+            if field == "text":
+                choices[0]["caption"] = value
+            elif field == "target":
+                choices[0]["target"] = value
+        renpy.restart_interaction()
+
+    def scene_editor_dialogue_field_changed(entry_id, field):
+        def changed(value):
+            scene_editor_set_dialogue_field(entry_id, field, value)
+        return changed
+
+    def scene_editor_set_project_name(value):
+        global scene_editor_project_name
+        new_value = value.strip() or "live_studio_project"
+        if scene_editor_project_name != new_value:
+            scene_editor_push_history()
+        scene_editor_project_name = new_value
+        renpy.restart_interaction()
+
+    def scene_editor_set_route_id(value):
+        global scene_editor_current_route_id
+        new_value = scene_editor_safe_identifier(value, "route_main")
+        if scene_editor_current_route_id != new_value:
+            scene_editor_push_history()
+        scene_editor_current_route_id = new_value
+        for record in scene_editor_frame_records:
+            record["route_id"] = scene_editor_current_route_id
+        renpy.restart_interaction()
+
+    def scene_editor_set_project_slot(value):
+        global scene_editor_project_slot
+        new_value = value.strip() or "autosave"
+        if scene_editor_project_slot != new_value:
+            scene_editor_push_history()
+        scene_editor_project_slot = new_value
+        renpy.restart_interaction()
+
+    def scene_editor_set_frame_insert_step(value):
+        global scene_editor_frame_insert_step
+        old_value = scene_editor_frame_insert_step
+        try:
+            new_value = max(0.1, float(value))
+        except Exception:
+            new_value = 1.0
+        if old_value != new_value:
+            scene_editor_push_history()
+        scene_editor_frame_insert_step = new_value
+        renpy.restart_interaction()
+
+    def scene_editor_toggle_setting(name):
+        global scene_editor_export_visuals, scene_editor_export_ui, scene_editor_export_dialogue, scene_editor_export_scene_clears, scene_editor_export_hidden_ui, scene_editor_preview_dialogue
+        old_values = (scene_editor_export_visuals, scene_editor_export_ui, scene_editor_export_dialogue, scene_editor_export_scene_clears, scene_editor_export_hidden_ui, scene_editor_preview_dialogue)
+        if name == "export_visuals":
+            scene_editor_export_visuals = not scene_editor_export_visuals
+        elif name == "export_ui":
+            scene_editor_export_ui = not scene_editor_export_ui
+        elif name == "export_dialogue":
+            scene_editor_export_dialogue = not scene_editor_export_dialogue
+        elif name == "export_scene_clears":
+            scene_editor_export_scene_clears = not scene_editor_export_scene_clears
+        elif name == "export_hidden_ui":
+            scene_editor_export_hidden_ui = not scene_editor_export_hidden_ui
+        elif name == "preview_dialogue":
+            scene_editor_preview_dialogue = not scene_editor_preview_dialogue
+        new_values = (scene_editor_export_visuals, scene_editor_export_ui, scene_editor_export_dialogue, scene_editor_export_scene_clears, scene_editor_export_hidden_ui, scene_editor_preview_dialogue)
+        if old_values != new_values:
+            scene_editor_export_visuals, scene_editor_export_ui, scene_editor_export_dialogue, scene_editor_export_scene_clears, scene_editor_export_hidden_ui, scene_editor_preview_dialogue = old_values
+            scene_editor_push_history()
+            scene_editor_export_visuals, scene_editor_export_ui, scene_editor_export_dialogue, scene_editor_export_scene_clears, scene_editor_export_hidden_ui, scene_editor_preview_dialogue = new_values
+        renpy.restart_interaction()
+
+    def scene_editor_set_frame_notes(scene_num, value):
+        scene_editor_ensure_frame_records()
+        if 0 <= scene_num < len(scene_editor_frame_records):
+            if scene_editor_frame_records[scene_num].get("notes", "") != value:
+                scene_editor_push_history()
+            scene_editor_frame_records[scene_num]["notes"] = value
+            renpy.restart_interaction()
+
+    def scene_editor_frame_notes_changed(scene_num):
+        def changed(value):
+            scene_editor_set_frame_notes(scene_num, value)
+        return changed
+
+    def scene_editor_set_frame_name(scene_num, value):
+        scene_editor_ensure_frame_records()
+        if 0 <= scene_num < len(scene_editor_frame_records):
+            new_value = value.strip() or "Frame {}".format(scene_num)
+            if scene_editor_frame_records[scene_num].get("name") != new_value:
+                scene_editor_push_history()
+            scene_editor_frame_records[scene_num]["name"] = new_value
+            renpy.restart_interaction()
+
+    def scene_editor_frame_name_changed(scene_num):
+        def changed(value):
+            scene_editor_set_frame_name(scene_num, value)
+        return changed
+
+    def scene_editor_set_frame_inherits(scene_num, value):
+        scene_editor_ensure_frame_records()
+        if scene_num <= 0 or scene_num >= len(scene_editor_frame_records):
+            return
+        scene_editor_push_history()
+        scene_editor_frame_records[scene_num]["inherits"] = bool(value)
+        scene_editor_frame_records[scene_num]["parent_id"] = scene_editor_frame_records[scene_num - 1]["id"] if value else None
+        renpy.restart_interaction()
+
+    def scene_editor_frame_to_dict(scene_num):
+        scene_editor_ensure_frame_records()
+        frame = deepcopy(scene_editor_frame_records[scene_num])
+        frame["ui"] = deepcopy(scene_editor_ensure_ui_scene(scene_num))
+        frame["dialogue"] = deepcopy(scene_editor_ensure_dialogue_scene(scene_num))
+        frame["scene_keyframe"] = deepcopy(scene_keyframes[scene_num])
+        return frame
+
+    def scene_editor_project_snapshot():
+        snapshot = scene_editor_snapshot()
+        snapshot["captured_displayables"] = [{} for _scene in scene_keyframes]
+        return snapshot
+
+    def scene_editor_project_data():
+        scene_editor_ensure_frame_records()
+        return {
+            "version": 1,
+            "name": scene_editor_project_name,
+            "route_id": scene_editor_current_route_id,
+            "route_counter": scene_editor_route_counter,
+            "frame_counter": scene_editor_frame_counter,
+            "dialogue_entry_counter": scene_editor_dialogue_entry_counter,
+            "ui_group_visibility": deepcopy(scene_editor_ui_group_visibility),
+            "ui_group_locks": sorted(scene_editor_ui_group_locks),
+            "settings": {
+                "export_visuals": scene_editor_export_visuals,
+                "export_ui": scene_editor_export_ui,
+                "export_dialogue": scene_editor_export_dialogue,
+                "export_scene_clears": scene_editor_export_scene_clears,
+                "export_hidden_ui": scene_editor_export_hidden_ui,
+                "preview_dialogue": scene_editor_preview_dialogue,
+                "frame_insert_step": scene_editor_frame_insert_step,
+            },
+            "frames": [scene_editor_frame_to_dict(i) for i in range(len(scene_keyframes))],
+            "snapshot": scene_editor_project_snapshot(),
+        }
+
+    def scene_editor_save_project(slot=None):
+        if slot is None:
+            slot = scene_editor_project_slot
+        if not hasattr(persistent, "_scene_editor_projects") or persistent._scene_editor_projects is None:
+            persistent._scene_editor_projects = {}
+        persistent._scene_editor_projects[slot] = deepcopy(scene_editor_project_data())
+        renpy.save_persistent()
+        renpy.notify(_("Saved Live Studio project: {}".format(slot)))
+
+    def scene_editor_load_project(slot=None):
+        global scene_editor_project_name, scene_editor_current_route_id, scene_editor_route_counter, scene_editor_frame_counter, scene_editor_frame_records, scene_editor_ui_elements, scene_editor_dialogue_scenes, scene_editor_dialogue_entry_counter, scene_editor_selected_dialogue_entry_id
+        global scene_editor_export_visuals, scene_editor_export_ui, scene_editor_export_dialogue, scene_editor_export_scene_clears, scene_editor_export_hidden_ui, scene_editor_preview_dialogue, scene_editor_frame_insert_step
+        if slot is None:
+            slot = scene_editor_project_slot
+        projects = getattr(persistent, "_scene_editor_projects", {}) or {}
+        data = projects.get(slot)
+        if not data:
+            renpy.notify(_("No Live Studio project in slot: {}".format(slot)))
+            return
+        snapshot = data.get("snapshot")
+        if snapshot:
+            scene_editor_restore(snapshot)
+        scene_editor_project_name = data.get("name", scene_editor_project_name)
+        scene_editor_current_route_id = data.get("route_id", scene_editor_current_route_id)
+        scene_editor_route_counter = data.get("route_counter", scene_editor_route_counter)
+        scene_editor_frame_counter = data.get("frame_counter", scene_editor_frame_counter)
+        scene_editor_dialogue_entry_counter = data.get("dialogue_entry_counter", scene_editor_dialogue_entry_counter)
+        scene_editor_selected_dialogue_entry_id = None
+        frames = data.get("frames", [])
+        if frames:
+            scene_editor_frame_records = []
+            for index, frame in enumerate(frames):
+                record = {}
+                for key in ("id", "route_id", "name", "scene_index", "parent_id", "time", "inherits", "dialogue_visible", "notes"):
+                    if key in frame:
+                        record[key] = deepcopy(frame[key])
+                record.setdefault("name", "Frame {}".format(index))
+                record.setdefault("route_id", scene_editor_current_route_id)
+                record.setdefault("dialogue_visible", True)
+                record.setdefault("notes", "")
+                scene_editor_frame_records.append(record)
+        if frames:
+            scene_editor_ui_elements = [scene_editor_normalize_ui_scene(deepcopy(frame.get("ui", {}))) for frame in frames]
+        scene_editor_dialogue_scenes = [scene_editor_normalize_dialogue_scene(deepcopy(frame.get("dialogue", {"entries": []}))) for frame in frames] or [{}]
+        settings = data.get("settings", {})
+        scene_editor_export_visuals = settings.get("export_visuals", scene_editor_export_visuals)
+        scene_editor_export_ui = settings.get("export_ui", scene_editor_export_ui)
+        scene_editor_export_dialogue = settings.get("export_dialogue", scene_editor_export_dialogue)
+        scene_editor_export_scene_clears = settings.get("export_scene_clears", scene_editor_export_scene_clears)
+        scene_editor_export_hidden_ui = settings.get("export_hidden_ui", scene_editor_export_hidden_ui)
+        scene_editor_preview_dialogue = settings.get("preview_dialogue", scene_editor_preview_dialogue)
+        scene_editor_frame_insert_step = settings.get("frame_insert_step", scene_editor_frame_insert_step)
+        scene_editor_ensure_frame_records()
+        renpy.notify(_("Loaded Live Studio project: {}".format(slot)))
+        renpy.restart_interaction()
+
+    def scene_editor_dialogue_export_lines(entries):
+        lines = []
+        for entry in entries:
+            entry_type = entry.get("type", "line")
+            text = entry.get("text", "")
+            speaker = entry.get("speaker", "").strip()
+            on_show = entry.get("on_show", "").strip()
+            if on_show:
+                lines.append("    $ {}".format(on_show))
+            if entry_type == "line":
+                if speaker:
+                    lines.append('    {} "{}"'.format(scene_editor_dialogue_speaker_export_name(speaker), text.replace('"', '\\"')))
+                else:
+                    lines.append('    "{}"'.format(text.replace('"', '\\"')))
+            elif entry_type == "narration":
+                lines.append('    "{}"'.format(text.replace('"', '\\"')))
+            elif entry_type == "choice":
+                lines.append("    menu:")
+                on_select = entry.get("on_select", "").strip()
+                for choice in entry.get("choices", []) or [{"caption": text, "target": entry.get("target", "")}]:
+                    caption = choice.get("caption", text).replace('"', '\\"')
+                    target = choice.get("target", "") or choice.get("merge_target", "")
+                    condition = choice.get("condition", "").strip()
+                    if condition:
+                        lines.append('        "{}" if {}:'.format(caption, condition))
+                    else:
+                        lines.append('        "{}":'.format(caption))
+                    if on_select:
+                        lines.append("            $ {}".format(on_select))
+                    script = choice.get("script", "").strip()
+                    if script:
+                        lines.append("            $ {}".format(script))
+                    if target:
+                        lines.append("            jump {}".format(scene_editor_safe_identifier(target, "TODO_choice_target")))
+                    else:
+                        lines.append("            pass")
+            elif entry_type == "script":
+                lines.append("    $ {}".format(entry.get("payload") or text or "pass"))
+            elif entry_type == "stat":
+                lines.append("    $ {}".format(entry.get("payload") or "# TODO stat change"))
+            elif entry_type == "reaction":
+                lines.append("    # reaction: {}".format(text))
+            elif entry_type == "jump":
+                lines.append("    jump {}".format(scene_editor_safe_identifier(entry.get("target") or text, "TODO_jump_target")))
+            elif entry_type == "label":
+                lines.append("    # label marker: {}".format(scene_editor_safe_identifier(entry.get("target") or text, "TODO_label")))
+            elif entry_type == "condition":
+                condition = entry.get("condition", "").strip() or "True"
+                lines.append("    if {}:".format(condition))
+                payload = entry.get("payload", "").strip()
+                if payload:
+                    lines.append("        $ {}".format(payload))
+                else:
+                    lines.append("        pass")
+            on_advance = entry.get("on_advance", "").strip()
+            if on_advance:
+                lines.append("    $ {}".format(on_advance))
+        return lines
+
+    def scene_editor_dialogue_speaker_export_name(speaker):
+        speaker = str(speaker or "").strip()
+        if not speaker:
+            return "speaker"
+        safe_speaker = scene_editor_safe_identifier(speaker, "speaker")
+        try:
+            existing = getattr(renpy.store, safe_speaker, None)
+            if existing is not None:
+                return safe_speaker
+        except Exception:
+            pass
+        try:
+            speakers = getattr(renpy.store, "character_speakers", None)
+            if isinstance(speakers, dict) and speaker in speakers:
+                character = speakers[speaker]
+                for name, value in vars(renpy.store).items():
+                    if name.startswith("_"):
+                        continue
+                    if value is character and scene_editor_safe_identifier(name, "") == name:
+                        return name
+        except Exception:
+            pass
+        return safe_speaker
+
+    def scene_editor_ui_export_lines(scene_num):
+        lines = []
+        ui_scene = scene_editor_ensure_ui_scene(scene_num)
+        if ui_scene:
+            lines.append("    # UI scene")
+        for tag in sorted(ui_scene, key=lambda item: ui_scene[item].get("zorder", 0)):
+            element = ui_scene[tag]
+            if not scene_editor_export_hidden_ui and not element.get("visible", True):
+                continue
+            group = element.get("group", "overlays")
+            text = element.get("text", "")
+            if element.get("kind") == "value":
+                text = "[" + element.get("bound_variable", "") + "]"
+            lines.append('    # ui {tag} group={group} text="{text}"'.format(tag=tag, group=group, text=text.replace('"', '\\"')))
+        return lines
+
+    def scene_editor_safe_identifier(value, fallback):
+        text = str(value or "").strip()
+        if not text:
+            return fallback
+        cleaned = []
+        for index, char in enumerate(text):
+            if char.isalnum() or char == "_":
+                cleaned.append(char)
+            elif char in (" ", "-", "."):
+                cleaned.append("_")
+        text = "".join(cleaned).strip("_")
+        if not text:
+            return fallback
+        if text[0].isdigit():
+            text = "_" + text
+        return text
+
+    def scene_editor_visual_export_lines(scene_num):
+        lines = []
+        scene_layers = []
+        for layer in scene_editor_get_layers():
+            if layer in image_state_org[scene_num] or layer in image_state[scene_num]:
+                scene_layers.append(layer)
+        for layer in scene_layers:
+            state = get_image_state(layer, scene_num)
+            if not state:
+                continue
+            for tag, _z in zorder_list[scene_num].get(layer, []):
+                if tag not in state:
+                    continue
+                child = state[tag].get("child")
+                image_name = child[0] if isinstance(child, tuple) else child
+                if not image_name:
+                    continue
+                if isinstance(image_name, tuple):
+                    image_name = " ".join(str(part) for part in image_name)
+                else:
+                    image_name = str(image_name)
+                command = "    show {}".format(image_name)
+                if image_name.split()[0] != tag:
+                    command += " as {}".format(tag)
+                if layer != "master":
+                    command += " onlayer {}".format(layer)
+                lines.append(command)
+        return lines
+
+    def scene_editor_build_live_studio_script():
+        scene_editor_ensure_frame_records()
+        label_name = scene_editor_safe_identifier(scene_editor_project_name, "live_studio_project")
+        lines = [
+            "label {}:".format(label_name),
+            "    # Generated by Ren'Py Live Studio draft exporter.",
+        ]
+        for scene_num, frame in enumerate(scene_editor_frame_records):
+            lines.append("")
+            lines.append("    # {} ({})".format(frame.get("name", "Frame"), frame.get("id", "frame")))
+            if frame.get("parent_id"):
+                lines.append("    # inherits {}".format(frame.get("parent_id")))
+            if scene_editor_export_scene_clears and scene_num > 0:
+                lines.append("    scene")
+            if scene_editor_export_visuals:
+                lines.extend(scene_editor_visual_export_lines(scene_num))
+            if scene_editor_export_ui:
+                lines.extend(scene_editor_ui_export_lines(scene_num))
+            if scene_editor_export_dialogue and frame.get("dialogue_visible", True):
+                lines.extend(scene_editor_dialogue_export_lines(scene_editor_ensure_dialogue_scene(scene_num).get("entries", [])))
+        lines.append("    return")
+        return "\n".join(lines)
+
+    def scene_editor_copy_text_to_clipboard(text):
+        try:
+            from pygame import scrap, locals
+            scrap.put(locals.SCRAP_TEXT, text.encode("utf-8"))
+            return True
+        except Exception:
+            try:
+                renpy.set_clipboard(text)
+                return True
+            except Exception:
+                return False
+
+    def scene_editor_export_live_studio_script():
+        global scene_editor_export_cache
+        scene_editor_export_cache = scene_editor_build_live_studio_script()
+        if scene_editor_copy_text_to_clipboard(scene_editor_export_cache):
+            renpy.notify(_("Live Studio draft script copied to clipboard"))
+        else:
+            renpy.notify(_("Live Studio draft script generated, but clipboard failed"))
+        renpy.restart_interaction()
+
+    def scene_editor_write_live_studio_file():
+        global scene_editor_export_cache, scene_editor_last_written_file
+        scene_editor_export_cache = scene_editor_build_live_studio_script()
+        filename = scene_editor_safe_identifier(scene_editor_project_name, "live_studio_project") + ".rpy.draft"
+        relative_dir = "DevTools/Debug/SceneEditor/gamefiles"
+        relative_path = relative_dir + "/" + filename
+        try:
+            import os
+            target_dir = renpy.config.gamedir + "/" + relative_dir
+            if not os.path.isdir(target_dir):
+                os.makedirs(target_dir)
+            target_path = target_dir + "/" + filename
+            with open(target_path, "w", encoding="utf-8") as export_file:
+                export_file.write(scene_editor_export_cache)
+                export_file.write("\n")
+            scene_editor_last_written_file = relative_path
+            renpy.notify(_("Wrote Live Studio draft: {}".format(relative_path)))
+        except Exception as exc:
+            scene_editor_last_written_file = ""
+            renpy.notify(_("Live Studio file write failed: {}".format(exc)))
+        renpy.restart_interaction()
 
     def scene_editor_sound_channels():
         channels = list(persistent._viewer_channel_list or default_channel_list)
@@ -443,10 +2004,12 @@ init -898 python in _viewers:
 
         def render(self, width, height, st, at):
             try:
-                renpy.render(self.child, width, height, 0, 0)
+                return renpy.render(self.child, width, height, self.fixed_st, self.fixed_at)
             except Exception:
-                pass
-            return renpy.render(self.child, width, height, self.fixed_st, self.fixed_at)
+                return renpy.Render(1, 1)
+
+        def visit(self):
+            return [self.child]
 
     def scene_editor_init_state():
         global image_state, image_state_org, camera_state_org, movie_cache, third_view_child, scene_editor_captured_displayables
@@ -663,6 +2226,12 @@ init -898 python in _viewers:
             copied.append(copied_scene)
         return copied
 
+    def scene_editor_copy_ui_captured_displayables():
+        copied = []
+        for scene_data in scene_editor_ui_captured_displayables:
+            copied.append(dict(scene_data))
+        return copied
+
     def scene_editor_clear_runtime_caches(assets=False):
         scene_editor_property_input_cache.clear()
         scene_editor_child_size_cache.clear()
@@ -766,6 +2335,32 @@ init -898 python in _viewers:
             "locked_items": deepcopy(scene_editor_locked_items),
             "hidden_items": deepcopy(scene_editor_hidden_items),
             "group_members": deepcopy(scene_editor_group_members),
+            "ui_elements": deepcopy(scene_editor_ui_elements),
+            "ui_captured_displayables": scene_editor_copy_ui_captured_displayables(),
+            "ui_group_visibility": deepcopy(scene_editor_ui_group_visibility),
+            "ui_counter": scene_editor_ui_counter,
+            "ui_scene_visible": scene_editor_ui_scene_visible,
+            "tree_tab": scene_editor_tree_tab,
+            "bottom_panel_tab": scene_editor_bottom_panel_tab,
+            "layers_view": scene_editor_layers_view,
+            "tree_expanded": deepcopy(scene_editor_tree_expanded),
+            "project_name": scene_editor_project_name,
+            "current_route_id": scene_editor_current_route_id,
+            "route_counter": scene_editor_route_counter,
+            "frame_counter": scene_editor_frame_counter,
+            "frame_records": deepcopy(scene_editor_frame_records),
+            "dialogue_scenes": deepcopy(scene_editor_dialogue_scenes),
+            "dialogue_entry_counter": scene_editor_dialogue_entry_counter,
+            "selected_dialogue_entry_id": scene_editor_selected_dialogue_entry_id,
+            "project_slot": scene_editor_project_slot,
+            "export_cache": scene_editor_export_cache,
+            "export_visuals": scene_editor_export_visuals,
+            "export_ui": scene_editor_export_ui,
+            "export_dialogue": scene_editor_export_dialogue,
+            "export_scene_clears": scene_editor_export_scene_clears,
+            "export_hidden_ui": scene_editor_export_hidden_ui,
+            "preview_dialogue": scene_editor_preview_dialogue,
+            "frame_insert_step": scene_editor_frame_insert_step,
         }
 
     def scene_editor_snapshots_equivalent(a, b):
@@ -778,7 +2373,9 @@ init -898 python in _viewers:
 
     def scene_editor_restore(snapshot):
         global current_scene, current_time, scene_keyframes, image_state, image_state_org, scene_editor_captured_displayables, camera_state_org, zorder_list, all_keyframes, loops, splines
-        global scene_editor_selected_layer, scene_editor_selected_tag, scene_editor_locked_items, scene_editor_hidden_items, scene_editor_group_members
+        global scene_editor_selected_layer, scene_editor_selected_tag, scene_editor_locked_items, scene_editor_hidden_items, scene_editor_group_members, scene_editor_ui_elements, scene_editor_ui_captured_displayables, scene_editor_ui_group_visibility, scene_editor_ui_group_locks, scene_editor_ui_counter, scene_editor_ui_scene_visible, scene_editor_tree_tab, scene_editor_bottom_panel_tab, scene_editor_layers_view, scene_editor_tree_expanded
+        global scene_editor_project_name, scene_editor_current_route_id, scene_editor_route_counter, scene_editor_frame_counter, scene_editor_frame_records, scene_editor_dialogue_scenes, scene_editor_dialogue_entry_counter, scene_editor_selected_dialogue_entry_id, scene_editor_project_slot, scene_editor_export_cache
+        global scene_editor_export_visuals, scene_editor_export_ui, scene_editor_export_dialogue, scene_editor_export_scene_clears, scene_editor_export_hidden_ui, scene_editor_preview_dialogue, scene_editor_frame_insert_step
         current_scene = snapshot["current_scene"]
         current_time = snapshot["current_time"]
         scene_keyframes = deepcopy(snapshot["scene_keyframes"])
@@ -795,6 +2392,39 @@ init -898 python in _viewers:
         scene_editor_locked_items = deepcopy(snapshot.get("locked_items", set()))
         scene_editor_hidden_items = deepcopy(snapshot.get("hidden_items", set()))
         scene_editor_group_members = deepcopy(snapshot.get("group_members", {}))
+        scene_editor_ui_elements = [scene_editor_normalize_ui_scene(deepcopy(scene)) for scene in snapshot.get("ui_elements", [{}])]
+        scene_editor_ui_captured_displayables = snapshot.get("ui_captured_displayables", scene_editor_copy_ui_captured_displayables())
+        scene_editor_ui_group_visibility = deepcopy(snapshot.get("ui_group_visibility", dict((group, True) for group in scene_editor_ui_groups)))
+        scene_editor_ui_group_locks = set(snapshot.get("ui_group_locks", []))
+        scene_editor_ui_counter = snapshot.get("ui_counter", scene_editor_ui_counter)
+        scene_editor_ui_scene_visible = snapshot.get("ui_scene_visible", scene_editor_ui_scene_visible)
+        scene_editor_tree_tab = snapshot.get("tree_tab", scene_editor_tree_tab)
+        scene_editor_bottom_panel_tab = snapshot.get("bottom_panel_tab", scene_editor_bottom_panel_tab)
+        if scene_editor_tree_tab == "Frames":
+            scene_editor_tree_tab = "Frame"
+        if scene_editor_tree_tab == "Dialogue":
+            scene_editor_tree_tab = "Scene"
+            scene_editor_bottom_panel_tab = "Dialogue"
+        scene_editor_layers_view = snapshot.get("layers_view", scene_editor_layers_view)
+        scene_editor_tree_expanded = deepcopy(snapshot.get("tree_expanded", set()))
+        scene_editor_project_name = snapshot.get("project_name", scene_editor_project_name)
+        scene_editor_current_route_id = snapshot.get("current_route_id", scene_editor_current_route_id)
+        scene_editor_route_counter = snapshot.get("route_counter", scene_editor_route_counter)
+        scene_editor_frame_counter = snapshot.get("frame_counter", scene_editor_frame_counter)
+        scene_editor_frame_records = deepcopy(snapshot.get("frame_records", []))
+        scene_editor_dialogue_scenes = [scene_editor_normalize_dialogue_scene(deepcopy(scene)) for scene in snapshot.get("dialogue_scenes", [{}])]
+        scene_editor_dialogue_entry_counter = snapshot.get("dialogue_entry_counter", scene_editor_dialogue_entry_counter)
+        scene_editor_selected_dialogue_entry_id = snapshot.get("selected_dialogue_entry_id", None)
+        scene_editor_project_slot = snapshot.get("project_slot", scene_editor_project_slot)
+        scene_editor_export_cache = snapshot.get("export_cache", "")
+        scene_editor_export_visuals = snapshot.get("export_visuals", scene_editor_export_visuals)
+        scene_editor_export_ui = snapshot.get("export_ui", scene_editor_export_ui)
+        scene_editor_export_dialogue = snapshot.get("export_dialogue", scene_editor_export_dialogue)
+        scene_editor_export_scene_clears = snapshot.get("export_scene_clears", scene_editor_export_scene_clears)
+        scene_editor_export_hidden_ui = snapshot.get("export_hidden_ui", scene_editor_export_hidden_ui)
+        scene_editor_preview_dialogue = snapshot.get("preview_dialogue", scene_editor_preview_dialogue)
+        scene_editor_frame_insert_step = snapshot.get("frame_insert_step", scene_editor_frame_insert_step)
+        scene_editor_ensure_frame_records()
         scene_editor_clear_runtime_caches()
         change_time(current_time)
 
@@ -824,11 +2454,14 @@ init -898 python in _viewers:
         scene_editor_restore(scene_editor_redo_stack.pop())
 
     def scene_editor_select(layer, tag):
-        global scene_editor_selected_layer, scene_editor_selected_tag
-        if tag is not None and (scene_editor_item_hidden(layer, tag) or scene_editor_item_locked(layer, tag)):
+        global scene_editor_selected_layer, scene_editor_selected_tag, scene_editor_layers_view
+        if tag is not None and scene_editor_item_hidden(layer, tag):
+            return
+        if layer == scene_editor_ui_layer and tag is not None and tag not in scene_editor_ui_scene():
             return
         scene_editor_selected_layer = layer
         scene_editor_selected_tag = tag
+        scene_editor_layers_view = "UI" if layer == scene_editor_ui_layer else "Scenes"
         scene_editor_clear_runtime_caches()
         renpy.restart_interaction()
 
@@ -887,9 +2520,6 @@ init -898 python in _viewers:
         else:
             scene_editor_locked_items.add(key)
         change_time(current_time)
-        if scene_editor_selected_layer == layer and scene_editor_selected_tag == tag and key in scene_editor_locked_items:
-            scene_editor_select(layer, None)
-            return
         renpy.restart_interaction()
 
     def scene_editor_layer_tags(layer):
@@ -898,11 +2528,18 @@ init -898 python in _viewers:
         return [tag for tag, _z in ordered if tag in state]
 
     def scene_editor_layer_panel_tags(layer):
+        if scene_editor_is_ui_layer(layer):
+            return scene_editor_ui_layer_panel_tags()
         tags = scene_editor_layer_tags(layer)
         tags.reverse()
         return tags
 
     def scene_editor_rewrite_zorder(layer, tags):
+        if scene_editor_is_ui_layer(layer):
+            for index, tag in enumerate(tags):
+                if tag in scene_editor_ui_scene():
+                    scene_editor_ui_scene()[tag]["zorder"] = index
+            return
         zorder_list[current_scene][layer] = [(tag, index) for index, tag in enumerate(tags)]
 
     def scene_editor_append_zorder(layer, tag):
@@ -910,6 +2547,8 @@ init -898 python in _viewers:
         entries.append((tag, len(entries)))
 
     def scene_editor_layer_render_tags(layer):
+        if scene_editor_is_ui_layer(layer):
+            return scene_editor_ui_tags(include_hidden=False)
         state = get_image_state(layer)
         return [tag for tag in scene_editor_layer_tags(layer) if tag in state and not scene_editor_item_hidden(layer, tag)]
 
@@ -1003,6 +2642,10 @@ init -898 python in _viewers:
             "axis_y": renpy.curry(scene_editor_toggle_axis_constraint)("y"),
             "snap_toggle": scene_editor_toggle_snap,
             "snap_cycle": scene_editor_cycle_snap_increment,
+            "prev_frame": scene_editor_go_previous_frame,
+            "next_frame": scene_editor_go_next_frame,
+            "parent_frame": scene_editor_go_parent_frame,
+            "child_frame": scene_editor_go_child_frame,
         }
         action = actions.get(name)
         if action is not None:
@@ -1050,6 +2693,8 @@ init -898 python in _viewers:
     def scene_editor_selected_state():
         if not scene_editor_has_selected():
             return None
+        if scene_editor_is_ui_layer():
+            return scene_editor_ui_element()
         if scene_editor_selected_tag is None:
             return camera_state_org[current_scene][scene_editor_selected_layer]
         return get_image_state(scene_editor_selected_layer)[scene_editor_selected_tag]
@@ -1058,6 +2703,8 @@ init -898 python in _viewers:
         state = scene_editor_selected_state()
         if state is None:
             return False
+        if scene_editor_is_ui_layer():
+            return prop in scene_editor_ui_property_defaults
         if scene_editor_selected_tag is None and prop == "child":
             return False
         return prop in state
@@ -1065,6 +2712,8 @@ init -898 python in _viewers:
     def scene_editor_has_selected():
         layer = scene_editor_selected_layer
         tag = scene_editor_selected_tag
+        if scene_editor_is_ui_layer(layer):
+            return tag is None or tag in scene_editor_ui_scene()
         if tag is None:
             return layer in camera_state_org[current_scene]
         if scene_editor_item_hidden(layer, tag):
@@ -1073,7 +2722,7 @@ init -898 python in _viewers:
 
     def scene_editor_value_to_string(key):
         try:
-            value = get_value(key, default=True)
+            value = scene_editor_get_property_value(key, default=True)
         except Exception:
             return ""
         if key[2] == "child" and isinstance(value, tuple):
@@ -1113,7 +2762,7 @@ init -898 python in _viewers:
         def commit(self):
             if self.buffer is None:
                 return
-            old_value = get_value(self.key, default=True)
+            old_value = scene_editor_get_property_value(self.key, default=True)
             try:
                 value = scene_editor_parse_value(self.buffer, old_value)
             except Exception:
@@ -1220,7 +2869,7 @@ init -898 python in _viewers:
         def begin_drag(self, x):
             self.dragging = True
             self.drag_origin = x
-            self.start_value = get_value(self.key, default=True)
+            self.start_value = scene_editor_get_property_value(self.key, default=True)
             self.last_value = self.start_value
             scene_editor_push_history()
 
@@ -1275,6 +2924,8 @@ init -898 python in _viewers:
         text = text.strip()
         if text == "":
             return None
+        if isinstance(old_value, str):
+            return text
         if isinstance(old_value, int) and not isinstance(old_value, bool):
             return int(float(text))
         if isinstance(old_value, float):
@@ -1298,7 +2949,7 @@ init -898 python in _viewers:
             return
         if push:
             scene_editor_push_history()
-        set_keyframe(key, value, time=current_time)
+        scene_editor_set_property_value(key, value)
         if key[2] == "child":
             scene_editor_child_size_cache.clear()
         if refresh:
@@ -1306,13 +2957,13 @@ init -898 python in _viewers:
 
     def scene_editor_toggle_value(key):
         scene_editor_push_history()
-        scene_editor_set_value(key, not bool(get_value(key, default=True)), push=False)
+        scene_editor_set_value(key, not bool(scene_editor_get_property_value(key, default=True)), push=False)
 
     def scene_editor_cycle_menu_value(key):
         values = menu_props.get(key[2], [])
         if not values:
             return
-        current = get_value(key, default=True)
+        current = scene_editor_get_property_value(key, default=True)
         try:
             index = values.index(current)
         except ValueError:
@@ -1321,7 +2972,7 @@ init -898 python in _viewers:
 
     def scene_editor_reset_value(key):
         scene_editor_push_history()
-        reset(key)
+        scene_editor_reset_property_value(key)
         change_time(current_time)
 
     def scene_editor_inline_changed(key):
@@ -1329,7 +2980,7 @@ init -898 python in _viewers:
             try:
                 if key[2] == "child":
                     return
-                old_value = get_value(key, default=True)
+                old_value = scene_editor_get_property_value(key, default=True)
                 if isinstance(old_value, tuple) and key[2] == "function":
                     return
                 value = scene_editor_parse_value(text, old_value)
@@ -1342,6 +2993,9 @@ init -898 python in _viewers:
         return changed
 
     def scene_editor_change_layer(layer):
+        if layer == scene_editor_ui_layer:
+            scene_editor_select(scene_editor_ui_layer, None)
+            return
         if layer not in image_state[current_scene]:
             return
         scene_editor_select(layer, None)
@@ -1351,28 +3005,48 @@ init -898 python in _viewers:
         if scene_num < 0 or scene_num >= len(scene_keyframes):
             return
         current_scene = scene_num
+        scene_editor_ensure_frame_records()
+        scene_editor_ensure_dialogue_scene(scene_num)
+        scene_editor_tree_expanded.add(scene_editor_tree_key("frame", scene_num, scene_num))
         scene_editor_clear_runtime_caches()
         change_time(scene_keyframes[scene_num][1])
 
-    def scene_editor_scene_time(before):
+    def scene_editor_scene_time(before, scene_num=None):
+        if scene_num is None:
+            scene_num = current_scene
         if before:
-            if current_scene == 0:
+            if scene_num == 0:
                 return 0.0
-            return round((scene_keyframes[current_scene - 1][1] + scene_keyframes[current_scene][1]) / 2.0, 2)
-        if current_scene + 1 < len(scene_keyframes):
-            return round((scene_keyframes[current_scene][1] + scene_keyframes[current_scene + 1][1]) / 2.0, 2)
-        return round(scene_keyframes[current_scene][1] + 1.0, 2)
+            return round((scene_keyframes[scene_num - 1][1] + scene_keyframes[scene_num][1]) / 2.0, 2)
+        if scene_num + 1 < len(scene_keyframes):
+            return round((scene_keyframes[scene_num][1] + scene_keyframes[scene_num + 1][1]) / 2.0, 2)
+        return round(scene_keyframes[scene_num][1] + scene_editor_frame_insert_step, 2)
 
-    def scene_editor_add_scene(before=False, empty=False):
+    def scene_editor_add_scene(before=False, empty=False, source_scene=None):
         global current_scene
-        insert_at = current_scene if before else current_scene + 1
-        new_time = scene_editor_scene_time(before)
-        source_scene = current_scene
-        layers = scene_editor_current_layers()
+        if source_scene is None:
+            source_scene = current_scene
+        if source_scene < 0 or source_scene >= len(scene_keyframes):
+            return
+        insert_at = source_scene if before else source_scene + 1
+        new_time = scene_editor_scene_time(before, source_scene)
+        scene_editor_ensure_frame_records()
+        source_frame_id = scene_editor_frame_records[source_scene].get("id")
+        source_parent_id = scene_editor_frame_records[source_scene].get("parent_id")
+        new_parent_id = None
+        if not empty:
+            new_parent_id = source_parent_id if before else source_frame_id
+        layers = scene_editor_current_layers(source_scene)
         source_image_state = deepcopy(image_state[source_scene])
         source_image_state_org = deepcopy(image_state_org[source_scene])
         source_camera_state_org = deepcopy(camera_state_org[source_scene])
         source_zorder_list = deepcopy(zorder_list[source_scene])
+        source_ui_elements = deepcopy(scene_editor_ensure_ui_scene(source_scene))
+        try:
+            source_ui_captured_displayables = dict(scene_editor_ui_captured_displayables[source_scene])
+        except Exception:
+            source_ui_captured_displayables = {}
+        source_dialogue_scene = {"entries": []} if empty else deepcopy(scene_editor_ensure_dialogue_scene(source_scene))
         source_values = {}
         source_camera_values = {}
         if not empty:
@@ -1394,6 +3068,9 @@ init -898 python in _viewers:
         scene_keyframes.insert(insert_at, (persistent._viewer_transition, new_time, None))
         image_state.insert(insert_at, {})
         image_state_org.insert(insert_at, {})
+        scene_editor_ui_elements.insert(insert_at, deepcopy(source_ui_elements))
+        scene_editor_ui_captured_displayables.insert(insert_at, {} if empty else dict(source_ui_captured_displayables))
+        scene_editor_dialogue_scenes.insert(insert_at, deepcopy(source_dialogue_scene))
         scene_editor_captured_displayables.insert(insert_at, {})
         camera_state_org.insert(insert_at, source_camera_state_org)
         zorder_list.insert(insert_at, {})
@@ -1417,7 +3094,28 @@ init -898 python in _viewers:
                     for prop, value in values.items():
                         all_keyframes[insert_at][(tag, layer, prop)] = [(value, new_time, persistent._viewer_warper)]
         current_scene = insert_at
+        scene_editor_frame_records.insert(insert_at, {
+            "id": None,
+            "route_id": scene_editor_current_route_id,
+            "name": "Frame {}".format(insert_at),
+            "scene_index": insert_at,
+            "parent_id": new_parent_id,
+            "time": new_time,
+            "inherits": not empty,
+            "dialogue_visible": True,
+            "notes": "",
+        })
+        scene_editor_ensure_frame_records()
+        new_frame_id = scene_editor_frame_records[insert_at].get("id")
+        next_index = insert_at + 1
+        if not empty and new_frame_id and next_index < len(scene_editor_frame_records):
+            next_record = scene_editor_frame_records[next_index]
+            if next_record.get("inherits", True) and next_record.get("parent_id") == new_parent_id:
+                next_record["parent_id"] = new_frame_id
         change_time(new_time)
+
+    def scene_editor_add_scene_end(empty=False):
+        scene_editor_add_scene(False, empty, len(scene_keyframes) - 1)
 
     def scene_editor_add_image(layer):
         filtered = scene_editor_filter_images(path=scene_editor_image_current_path)
@@ -1433,7 +3131,10 @@ init -898 python in _viewers:
             renpy.notify(_("Locked items cannot be deleted"))
             return
         scene_editor_push_history()
-        scene_editor_remove_image(scene_editor_selected_layer, scene_editor_selected_tag)
+        if scene_editor_is_ui_layer():
+            scene_editor_remove_ui_element(scene_editor_selected_tag)
+        else:
+            scene_editor_remove_image(scene_editor_selected_layer, scene_editor_selected_tag)
         scene_editor_select(scene_editor_selected_layer, None)
         scene_editor_child_size_cache.clear()
         change_time(current_time)
@@ -1441,15 +3142,21 @@ init -898 python in _viewers:
     def scene_editor_copy_selected():
         global scene_editor_clipboard
         if scene_editor_selected_tag is None:
-            renpy.notify(_("Select an image to copy"))
+            renpy.notify(_("Select an object to copy"))
             return
-        state = get_image_state(scene_editor_selected_layer).get(scene_editor_selected_tag, {})
-        zorder = scene_editor_default_added_zorder
-        for tag, z in zorder_list[current_scene].get(scene_editor_selected_layer, []):
-            if tag == scene_editor_selected_tag:
-                zorder = z
-                break
+        if scene_editor_is_ui_layer():
+            state = scene_editor_ui_element(scene_editor_selected_tag) or {}
+            zorder = state.get("zorder", 0)
+        else:
+            state = get_image_state(scene_editor_selected_layer).get(scene_editor_selected_tag, {})
+            zorder = scene_editor_default_added_zorder
+            for tag, z in zorder_list[current_scene].get(scene_editor_selected_layer, []):
+                if tag == scene_editor_selected_tag:
+                    zorder = z
+                    break
+        clipboard_kind = "ui" if scene_editor_is_ui_layer() else "image"
         scene_editor_clipboard = {
+            "kind": clipboard_kind,
             "layer": scene_editor_selected_layer,
             "tag": scene_editor_selected_tag,
             "state": deepcopy(state),
@@ -1464,6 +3171,18 @@ init -898 python in _viewers:
             return
         if layer is None:
             layer = scene_editor_selected_layer
+        if scene_editor_clipboard.get("kind") == "ui":
+            scene_editor_push_history()
+            state = deepcopy(scene_editor_clipboard["state"])
+            base_tag = scene_editor_clipboard.get("tag") or "ui"
+            new_tag = scene_editor_ui_unique_tag(base_tag)
+            state["zorder"] = max([element.get("zorder", 0) for element in scene_editor_ui_scene().values()] + [-1]) + 1
+            scene_editor_ui_scene()[new_tag] = state
+            scene_editor_selected_layer = scene_editor_ui_layer
+            scene_editor_selected_tag = new_tag
+            scene_editor_clear_runtime_caches()
+            change_time(current_time)
+            return
         base_tag = scene_editor_clipboard.get("tag") or "image"
         new_tag = scene_editor_unique_tag(base_tag, layer)
         if new_tag is None:
@@ -1657,6 +3376,18 @@ init -898 python in _viewers:
                 child = SceneEditorFixedTimeDisplayable(child, current_time, 0)
             except Exception:
                 child = None
+        if child is None:
+            fallback_name = scene_editor_image_fallback_paths.get(name)
+            if fallback_name:
+                try:
+                    if hasattr(renpy, "displayable"):
+                        child = renpy.displayable(fallback_name)
+                    else:
+                        child = renpy.easy.displayable(fallback_name)
+                    child = scene_editor_apply_at_list(child, at_list or [])
+                    child = SceneEditorFixedTimeDisplayable(child, current_time, 0)
+                except Exception:
+                    child = None
         return child
 
     def scene_editor_at_list_cache_key(at_list):
@@ -1764,38 +3495,46 @@ init -898 python in _viewers:
     def scene_editor_preview_displayable(st=0, at=0):
         scene = Fixed(xsize=config.screen_width, ysize=config.screen_height)
         count = 0
-        scene_checkpoints = tuple(scene_keyframes)
         preview_x, preview_y, preview_zoom = scene_editor_preview_transform_values()
-        preview_zorder = [{} for _scene in zorder_list]
+        drag_layer = scene_editor_selected_layer if scene_editor_fast_drag_preview and scene_editor_active_drag_mode and scene_editor_selected_tag else None
+        drag_tag = scene_editor_selected_tag if drag_layer else None
+        for layer in scene_editor_current_layers():
+            if drag_layer and drag_layer != scene_editor_ui_layer and layer != drag_layer:
+                continue
+            state = get_image_state(layer)
+            if not state:
+                continue
+            layer_scene = Fixed(xsize=config.screen_width, ysize=config.screen_height)
+            render_tags = [drag_tag] if drag_layer == layer and drag_tag in state else scene_editor_layer_render_tags(layer)
+            for tag in render_tags:
+                displayable = scene_editor_render_item(layer, tag, st, at)
+                if displayable is not None:
+                    layer_scene.add(displayable)
+                    count += 1
+            if render_tags:
+                scene.add(Transform(Transform(layer_scene, **scene_editor_camera_kwargs(layer)), zoom=preview_zoom, xpos=preview_x, ypos=preview_y))
+        count += scene_editor_render_ui_scene(scene)
+        if not count:
+            scene.add(Transform(Text("SceneEditor captured no drawable images", color="#FFFFFF", size=30), xpos=40, ypos=40))
+        return scene, count
+
+    def scene_editor_game_preview_displayable(st=0, at=0):
+        scene = Fixed(xsize=config.screen_width, ysize=config.screen_height)
+        count = 0
         for layer in scene_editor_current_layers():
             state = get_image_state(layer)
             if not state:
                 continue
-            layer_image_points = {}
+            layer_scene = Fixed(xsize=config.screen_width, ysize=config.screen_height)
             render_tags = scene_editor_layer_render_tags(layer)
             for tag in render_tags:
-                layer_image_points[tag] = scene_editor_transform_checkpoints(layer, tag, state[tag])
-                count += 1
-            camera_state = camera_state_org[current_scene].get(layer, {})
-            camera_checkpoints = scene_editor_transform_checkpoints(layer, None, camera_state)
-            loop = defaultdict(scene_editor_default_false)
-            spline = defaultdict(dict)
-            preview_zorder[current_scene][layer] = [(tag, index) for index, tag in enumerate(render_tags)]
-            scene.add(Transform(
-                Transform(function=renpy.curry(camera_transform)(
-                camera_check_points=camera_checkpoints,
-                image_check_points=layer_image_points,
-                scene_checkpoints=scene_checkpoints,
-                viewer_check_points=camera_checkpoints,
-                zorder_list=preview_zorder,
-                loop=loop,
-                spline=spline,
-                time=current_time,
-                scene_num=current_scene,
-                layer=layer)),
-                zoom=preview_zoom,
-                xpos=preview_x,
-                ypos=preview_y))
+                displayable = scene_editor_render_item(layer, tag, st, at)
+                if displayable is not None:
+                    layer_scene.add(displayable)
+                    count += 1
+            if render_tags:
+                scene.add(Transform(layer_scene, **scene_editor_camera_kwargs(layer)))
+        count += scene_editor_render_ui_scene(scene)
         if not count:
             scene.add(Transform(Text("SceneEditor captured no drawable images", color="#FFFFFF", size=30), xpos=40, ypos=40))
         return scene, count
@@ -1812,15 +3551,32 @@ init -898 python in _viewers:
         return value
 
     def scene_editor_stage_item_rect(layer, tag, st=0, at=0):
-        xpos = scene_editor_to_pixel(get_value((tag, layer, "xpos"), default=True), config.screen_width)
-        ypos = scene_editor_to_pixel(get_value((tag, layer, "ypos"), default=True), config.screen_height)
-        xanchor = scene_editor_to_pixel(get_value((tag, layer, "xanchor"), default=True), 1.0)
-        yanchor = scene_editor_to_pixel(get_value((tag, layer, "yanchor"), default=True), 1.0)
-        xoffset = get_value((tag, layer, "xoffset"), default=True)
-        yoffset = get_value((tag, layer, "yoffset"), default=True)
-        zoom = get_value((tag, layer, "zoom"), default=True)
-        xzoom = get_value((tag, layer, "xzoom"), default=True)
-        yzoom = get_value((tag, layer, "yzoom"), default=True)
+        state = scene_editor_ui_element(tag) if scene_editor_is_ui_layer(layer) else get_image_state(layer).get(tag, {})
+        at_list = (state or {}).get("at_list", [])
+
+        def placement_value(prop, size, default_size=None):
+            value = scene_editor_get_property_value((tag, layer, prop), default=True)
+            default_value = scene_editor_ui_property_defaults.get(prop) if scene_editor_is_ui_layer(layer) else property_default_value.get(prop)
+            if at_list and (value is None or value == default_value):
+                getter = globals().get("get_at_list_props", None)
+                if callable(getter):
+                    try:
+                        at_value = getter(at_list, prop, current_time, at)
+                        if at_value is not None:
+                            value = at_value
+                    except Exception:
+                        pass
+            return scene_editor_to_pixel(value, size if default_size is None else default_size)
+
+        xpos = placement_value("xpos", config.screen_width)
+        ypos = placement_value("ypos", config.screen_height)
+        xanchor = placement_value("xanchor", 1.0)
+        yanchor = placement_value("yanchor", 1.0)
+        xoffset = scene_editor_direct_number(scene_editor_get_property_value((tag, layer, "xoffset"), default=True), 0)
+        yoffset = scene_editor_direct_number(scene_editor_get_property_value((tag, layer, "yoffset"), default=True), 0)
+        zoom = scene_editor_get_property_value((tag, layer, "zoom"), default=True)
+        xzoom = scene_editor_get_property_value((tag, layer, "xzoom"), default=True)
+        yzoom = scene_editor_get_property_value((tag, layer, "yzoom"), default=True)
         if zoom is None:
             zoom = 1.0
         if xzoom is None:
@@ -1833,31 +3589,98 @@ init -898 python in _viewers:
             yoffset = 0
         width = 160
         height = 160
-        name = scene_editor_child_name(layer, tag)
-        if name:
-            state = get_image_state(layer).get(tag, {})
-            size_key = (name, scene_editor_at_list_cache_key(state.get("at_list")), config.screen_width, config.screen_height)
-            cached_size = scene_editor_child_size_cache.get(size_key)
-            if cached_size is not None:
-                width, height = cached_size
+        if scene_editor_is_ui_layer(layer):
+            element = scene_editor_ui_element(tag) or {}
+            if element.get("kind") in ("panel", "screen"):
+                width = int(element.get("xsize", 220))
+                height = int(element.get("ysize", 48))
+                if element.get("kind") == "screen":
+                    try:
+                        displayable = scene_editor_ui_captured_displayables[current_scene].get(tag)
+                        if displayable is not None:
+                            cr = renpy.render(displayable, config.screen_width, config.screen_height, st, at)
+                            width, height = cr.get_size()
+                    except Exception:
+                        pass
             else:
                 try:
-                    child = scene_editor_build_child_displayable(name, state.get("at_list"))
-                    cr = renpy.render(child, config.screen_width, config.screen_height, st, at)
+                    if element.get("image"):
+                        text_child = scene_editor_ui_displayable(tag)
+                    else:
+                        text_child = Text(scene_editor_ui_display_text(element), size=int(element.get("size", 32)), color=element.get("color", "#FFFFFF"), xsize=element.get("xsize", None))
+                    cr = renpy.render(text_child, config.screen_width, config.screen_height, st, at)
                     width, height = cr.get_size()
-                    scene_editor_child_size_cache[size_key] = (width, height)
+                except Exception:
+                    width, height = int(element.get("xsize", 220)), int(element.get("ysize", 48))
+        else:
+            if state.get("_captured_raw"):
+                try:
+                    captured = scene_editor_captured_displayables[current_scene].get(layer, {}).get(tag)
+                    if captured is not None:
+                        cr = renpy.render(captured, config.screen_width, config.screen_height, st, at)
+                        width, height = cr.get_size()
                 except Exception:
                     pass
+            name = scene_editor_child_name(layer, tag)
+            if name:
+                size_key = (name, scene_editor_at_list_cache_key(state.get("at_list")), config.screen_width, config.screen_height)
+                cached_size = scene_editor_child_size_cache.get(size_key)
+                if cached_size is not None:
+                    width, height = cached_size
+                else:
+                    try:
+                        child = scene_editor_build_child_displayable(name, state.get("at_list"))
+                        cr = renpy.render(child, config.screen_width, config.screen_height, st, at)
+                        width, height = cr.get_size()
+                        scene_editor_child_size_cache[size_key] = (width, height)
+                    except Exception:
+                        pass
         width = max(24, abs(width * zoom * xzoom))
         height = max(24, abs(height * zoom * yzoom))
         x = xpos + xoffset - width * xanchor
         y = ypos + yoffset - height * yanchor
+        rotate = scene_editor_direct_number(scene_editor_get_property_value((tag, layer, "rotate"), default=True), 0)
+        if rotate:
+            try:
+                from math import radians, cos
+                angle = radians(rotate)
+                c = abs(cos(angle))
+                s = abs(sin(angle))
+                rotated_w = width * c + height * s
+                rotated_h = width * s + height * c
+                cx = x + width / 2.0
+                cy = y + height / 2.0
+                x = cx - rotated_w / 2.0
+                y = cy - rotated_h / 2.0
+                width = rotated_w
+                height = rotated_h
+            except Exception:
+                pass
         return x, y, width, height
 
     def scene_editor_item_rect(layer, tag, st=0, at=0):
         sx, sy, sw, sh = scene_editor_stage_item_rect(layer, tag, st, at)
         offset_x, offset_y, scale = scene_editor_canvas_offsets()
+        if scene_editor_is_ui_layer(layer):
+            return (
+                offset_x + sx * scale,
+                offset_y + sy * scale,
+                sw * scale,
+                sh * scale,
+            )
         preview_x, preview_y, preview_zoom = scene_editor_preview_transform_values()
+        camera = camera_state_org[current_scene].get(layer, {})
+        camera_zoom = scene_editor_direct_number(camera.get("zoom", 1.0), 1.0)
+        camera_xzoom = scene_editor_direct_number(camera.get("xzoom", 1.0), 1.0)
+        camera_yzoom = scene_editor_direct_number(camera.get("yzoom", 1.0), 1.0)
+        camera_x = scene_editor_to_pixel(camera.get("xpos", 0), config.screen_width)
+        camera_y = scene_editor_to_pixel(camera.get("ypos", 0), config.screen_height)
+        camera_xoffset = scene_editor_direct_number(camera.get("xoffset", 0), 0)
+        camera_yoffset = scene_editor_direct_number(camera.get("yoffset", 0), 0)
+        sx = camera_x + camera_xoffset + sx * camera_zoom * camera_xzoom
+        sy = camera_y + camera_yoffset + sy * camera_zoom * camera_yzoom
+        sw = abs(sw * camera_zoom * camera_xzoom)
+        sh = abs(sh * camera_zoom * camera_yzoom)
         return (
             offset_x + (preview_x + sx * preview_zoom) * scale,
             offset_y + (preview_y + sy * preview_zoom) * scale,
@@ -1869,6 +3692,10 @@ init -898 python in _viewers:
         if scene_editor_selected_tag is None:
             return None
         if not scene_editor_has_selected():
+            return None
+        if scene_editor_layers_view == "UI" and scene_editor_selected_layer != scene_editor_ui_layer:
+            return None
+        if scene_editor_layers_view == "Scenes" and scene_editor_selected_layer == scene_editor_ui_layer:
             return None
         return scene_editor_item_rect(scene_editor_selected_layer, scene_editor_selected_tag, st, at)
 
@@ -1893,6 +3720,21 @@ init -898 python in _viewers:
 
     def scene_editor_hit_test(x, y, st=0, at=0):
         stage_x, stage_y = scene_editor_screen_to_stage(x, y)
+        if scene_editor_layers_view == "UI":
+            if not scene_editor_ui_scene_visible:
+                return None, None
+            for tag in reversed(scene_editor_ui_tags(include_hidden=False)):
+                element = scene_editor_ui_element(tag) or {}
+                if not element.get("selectable", True):
+                    continue
+                if scene_editor_item_locked(scene_editor_ui_layer, tag) or scene_editor_item_hidden(scene_editor_ui_layer, tag):
+                    continue
+                rx, ry, rw, rh = scene_editor_item_rect(scene_editor_ui_layer, tag, st, at)
+                if x >= rx and x <= rx + rw and y >= ry and y <= ry + rh:
+                    return scene_editor_ui_layer, tag
+            return None, None
+        if scene_editor_layers_view != "Scenes":
+            return None, None
         fallback_layer = None
         fallback_tag = None
         for layer in reversed(scene_editor_current_layers()):
@@ -1907,7 +3749,7 @@ init -898 python in _viewers:
                     if fallback_tag is None:
                         fallback_layer = layer
                         fallback_tag = tag
-                    if scene_editor_item_hit_opaque(layer, tag, stage_x, stage_y, st, at):
+                    if not scene_editor_precise_hit_testing or scene_editor_item_hit_opaque(layer, tag, stage_x, stage_y, st, at):
                         return layer, tag
         return fallback_layer, fallback_tag
 
@@ -1916,29 +3758,32 @@ init -898 python in _viewers:
             return
         x = scene_editor_snap_value(x)
         y = scene_editor_snap_value(y)
-        set_keyframe((tag, layer, "xpos"), int(round(x)), time=current_time)
-        set_keyframe((tag, layer, "ypos"), int(round(y)), time=current_time)
+        scene_editor_set_property_value((tag, layer, "xpos"), int(round(x)))
+        scene_editor_set_property_value((tag, layer, "ypos"), int(round(y)))
         if refresh:
             change_time(current_time)
 
     def scene_editor_set_scale(layer, tag, xzoom, yzoom, refresh=True):
         if scene_editor_item_locked(layer, tag) or scene_editor_item_hidden(layer, tag):
             return
-        set_keyframe((tag, layer, "xzoom"), max(0.01, round(float(xzoom), 3)), time=current_time)
-        set_keyframe((tag, layer, "yzoom"), max(0.01, round(float(yzoom), 3)), time=current_time)
+        scene_editor_set_property_value((tag, layer, "xzoom"), max(0.01, round(float(xzoom), 3)))
+        scene_editor_set_property_value((tag, layer, "yzoom"), max(0.01, round(float(yzoom), 3)))
         if refresh:
             change_time(current_time)
 
     def scene_editor_set_rotate(layer, tag, rotate, refresh=True):
         if scene_editor_item_locked(layer, tag) or scene_editor_item_hidden(layer, tag):
             return
-        set_keyframe((tag, layer, "rotate"), round(float(rotate), 2), time=current_time)
+        scene_editor_set_property_value((tag, layer, "rotate"), round(float(rotate), 2))
         if refresh:
             change_time(current_time)
 
     def open_scene_editor():
         global current_time, current_scene, scene_keyframes, zorder_list, sound_keyframes, all_keyframes, playing, in_editor, loops, splines
         global scene_editor_selected_layer, scene_editor_selected_tag, scene_editor_restore_not_included_layer
+        global scene_editor_ui_elements, scene_editor_ui_captured_displayables, scene_editor_ui_group_visibility, scene_editor_ui_group_locks, scene_editor_ui_counter, scene_editor_ui_scene_visible, scene_editor_preview_mode, scene_editor_tree_tab, scene_editor_bottom_panel_tab, scene_editor_layers_view, scene_editor_tree_expanded
+        global scene_editor_frame_records, scene_editor_frame_counter, scene_editor_dialogue_scenes, scene_editor_dialogue_entry_counter, scene_editor_selected_dialogue_entry_id, scene_editor_export_cache
+        global scene_editor_export_visuals, scene_editor_export_ui, scene_editor_export_dialogue, scene_editor_export_scene_clears, scene_editor_export_hidden_ui, scene_editor_preview_dialogue, scene_editor_frame_insert_step
         global not_included_layer
         if not config.developer:
             return
@@ -1951,6 +3796,30 @@ init -898 python in _viewers:
         sound_keyframes = {}
         all_keyframes = [{}]
         zorder_list = [{}]
+        scene_editor_ui_elements = [{}]
+        scene_editor_ui_captured_displayables = [{}]
+        scene_editor_ui_group_visibility = dict((group, True) for group in scene_editor_ui_groups)
+        scene_editor_ui_group_locks = set()
+        scene_editor_ui_counter = 0
+        scene_editor_ui_scene_visible = True
+        scene_editor_preview_mode = False
+        scene_editor_tree_tab = "Scene"
+        scene_editor_bottom_panel_tab = "Assets"
+        scene_editor_layers_view = "Scenes"
+        scene_editor_tree_expanded = set([scene_editor_tree_key("frame", 0, 0)])
+        scene_editor_frame_records = []
+        scene_editor_frame_counter = 0
+        scene_editor_dialogue_scenes = [{}]
+        scene_editor_dialogue_entry_counter = 0
+        scene_editor_selected_dialogue_entry_id = None
+        scene_editor_export_cache = ""
+        scene_editor_export_visuals = True
+        scene_editor_export_ui = True
+        scene_editor_export_dialogue = True
+        scene_editor_export_scene_clears = True
+        scene_editor_export_hidden_ui = False
+        scene_editor_preview_dialogue = True
+        scene_editor_frame_insert_step = 1.0
         scene_editor_restore_not_included_layer = not_included_layer
         not_included_layer = ()
         for layer in scene_editor_get_layers():
@@ -1972,15 +3841,24 @@ init -898 python in _viewers:
         for channel in persistent._viewer_channel_list:
             sound_keyframes[channel] = {}
         renpy.store._viewers.at_clauses_flag = False
+        scene_editor_capture_live_studio_context()
         scene_editor_init_state()
+        scene_editor_ensure_frame_records()
+        scene_editor_ensure_dialogue_scene(0)
         scene_editor_history[:] = []
         scene_editor_redo_stack[:] = []
         layers = scene_editor_current_layers()
-        if not layers:
+        has_ui_scene = bool(scene_editor_ui_scene())
+        if not layers and not has_ui_scene:
             not_included_layer = scene_editor_restore_not_included_layer
             renpy.notify(_("No editable layers found"))
             return
-        scene_editor_selected_layer = "master" if "master" in image_state[current_scene] else layers[0]
+        if "master" in image_state[current_scene]:
+            scene_editor_selected_layer = "master"
+        elif layers:
+            scene_editor_selected_layer = layers[0]
+        else:
+            scene_editor_selected_layer = scene_editor_ui_layer
         scene_editor_selected_tag = None
         in_editor = True
         window_org = renpy.store._window

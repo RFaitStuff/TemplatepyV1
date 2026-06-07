@@ -1,0 +1,7 @@
+Copyright © 2026 Fait
+
+All Rights Reserved.
+
+This repository is publicly accessible for demonstration, review, and educational reference purposes only.
+
+Permission is not granted to copy, redistribute, modify, use in commercial projects, use in non-commercial projects, create derivative works, or incorporate any portion of this software into other software without prior written permission from the copyright holder.

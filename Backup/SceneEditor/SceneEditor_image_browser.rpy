@@ -97,7 +97,12 @@ init -897 python in _viewers:
     def scene_editor_image_folder(name_tuple):
         files = scene_editor_image_files_for_name(name_tuple)
         if files:
-            folder = files[0].replace("\\", "/").rsplit("/", 1)[0]
+            normalized = files[0].replace("\\", "/")
+            try:
+                normalized = renpy.store.asset_strip_root(normalized, renpy.store.asset_image_roots)
+            except Exception:
+                pass
+            folder = normalized.rsplit("/", 1)[0]
             return folder if folder else "Root"
         if len(name_tuple) > 1:
             return name_tuple[0]
@@ -142,7 +147,11 @@ init -897 python in _viewers:
             if not isinstance(path, str):
                 continue
             normalized = path.replace("\\", "/")
-            if normalized.lower().endswith(allowed):
+            try:
+                in_audio_root = renpy.store.asset_under(normalized, renpy.store.asset_audio_roots)
+            except Exception:
+                in_audio_root = True
+            if in_audio_root and normalized.lower().endswith(allowed):
                 files.append(normalized)
         mode = scene_editor_asset_sort_mode
         if mode == "Name A-Z":
@@ -165,12 +174,14 @@ init -897 python in _viewers:
 
     def scene_editor_set_asset_tab(tab):
         global scene_editor_asset_mode, scene_editor_asset_tab, scene_editor_image_current_path
+        if tab not in ("Images", "Audio"):
+            tab = "Images"
         scene_editor_asset_tab = tab
         if tab == "Audio":
             scene_editor_asset_mode = "Audio"
         else:
             scene_editor_asset_mode = "Images"
-            _tab_folders = {"Characters": ("characters",), "Backgrounds": ("bg",), "GUI": ("gui",)}
+            _tab_folders = {}
             if tab in _tab_folders:
                 _target = _tab_folders[tab]
                 _root = scene_editor_image_tree_root()
@@ -215,6 +226,8 @@ init -897 python in _viewers:
 
     def scene_editor_set_right_panel_tab(tab):
         global scene_editor_right_panel_tab
+        if tab not in ("Layers", "Project", "History"):
+            tab = "Layers"
         scene_editor_right_panel_tab = tab
         renpy.restart_interaction()
 

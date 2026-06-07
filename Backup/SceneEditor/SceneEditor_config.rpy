@@ -80,7 +80,7 @@ init -899 python in _viewers:
     scene_editor_selection_handle_fill = "#FFFFFFFF"
     scene_editor_selection_handle_idle_fill = "#101827FF"
     scene_editor_selection_rotate_handle_fill = "#66CCFFFF"
-    scene_editor_selection_outline_thickness = 3
+    scene_editor_selection_outline_thickness = 1
     scene_editor_selection_handle_size = 12
     scene_editor_selection_handle_hit_size = 20
     scene_editor_selection_rotate_handle_size = 16

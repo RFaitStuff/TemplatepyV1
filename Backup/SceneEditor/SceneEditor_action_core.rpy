@@ -3516,8 +3516,10 @@ show {imagename}""".format(imagename=child)
     def get_image_state(layer, scene_num=None):
         if scene_num is None:
             scene_num = current_scene
-        result = dict(image_state_org[scene_num][layer])
-        result.update(image_state[scene_num][layer])
+        if scene_num < 0 or scene_num >= len(image_state_org):
+            return {}
+        result = dict(image_state_org[scene_num].get(layer, {}))
+        result.update(image_state[scene_num].get(layer, {}))
         return result
 
 
