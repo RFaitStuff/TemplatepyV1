@@ -1,30 +1,70 @@
-# Validation performed in audited build v2
+# Validation report
 
-## Executed checks
+## Automated checks completed
 
-- Parsed every embedded `init python` block with Python's AST parser.
-- Executed all 13 Python modules in init-priority order against a Ren'Py API compatibility stub.
-- Exercised frame inheritance, local overrides, additions/removals, duplicate frame names, dialogue active-event export, managed UI export, captured-screen exclusion, per-frame widget overrides, and JSON saving.
-- Tested quoted and multiline dialogue/UI text generation.
-- Checked the screen source against Ren'Py 8.5 screen-language documentation and removed unsupported `vpgrid allow_underfull` usage.
-- Cross-checked scene-list capture patterns with ActionEditor3's current `ActionEditor.rpy` implementation.
-- Confirmed runtime `ScreenDisplayable` objects and screenshot bytes remain outside the JSON project model.
-- Confirmed animation/ATL editor implementation is absent from the main build.
+The final build was checked with a mocked Ren'Py 8.5.3 runtime and static tooling.
 
-## Corrections made during the audit
+Passed checks include:
 
-- Changed the default shortcut from Shift+E to Shift+L to avoid Ren'Py's built-in editor shortcut.
-- Prevented captured `say`, `choice`, and other runtime screens from exporting as ordinary `show screen` statements.
-- Made exported frame labels unique with stable ID suffixes.
-- Changed UI overrides to be stored per frame instead of allowing later frames to overwrite earlier values.
-- Fixed first-button creation adding an unwanted text element.
-- Fixed same-frame add/remove resolution order.
-- Fixed float offsets being interpreted as relative screen positions.
-- Fixed captured bounds applying zoom twice.
-- Increased JSON-safe nesting depth so deep UI trees are not converted into strings.
-- Made generated strings safe for quotes, slashes, tabs, and newlines.
-- Added deterministic layer clearing to root-frame story exports.
+- Every embedded `init python` block compiles as Python.
+- All modules initialize in Ren'Py init-priority order in the mock runtime.
+- 100+ screen-language references to `live_studio.*` resolve to implemented names.
+- Frame inheritance and local property overrides.
+- Blank, detached, inherited, and terminal branch frames.
+- Same-frame add/remove behavior.
+- Undo/redo project-dirty behavior.
+- JSON-safe project save with deep UI trees.
+- Old-controller migration to per-frame dialogue queues.
+- Ordered command-plus-dialogue export.
+- Command-only frames do not replay inherited dialogue.
+- Empty inherited frames do not replay parent dialogue.
+- Pause without duration exports as `pause`.
+- Multiline Python commands and choice commands.
+- Raw Ren'Py event preservation.
+- Choice prompt plus options as one interaction.
+- Managed Say and Choice screen generation.
+- Managed child coordinates relative to their containers.
+- Imagebutton preview/export.
+- Structured frame/button destinations.
+- Duplicate generated label and screen-name detection.
+- Missing frame target, invalid Python expression/script, inheritance-cycle, duplicate widget-ID, and broken dialogue-queue validation.
+- Generated helper Python block compilation.
+- Source-flow import model and branch-frame creation paths.
+- ZIP/file integrity and UTF-8 readability.
 
-## Remaining required target-project check
+## Source/API cross-checks
 
-This environment does not include a runnable Ren'Py 8.5.3 launcher, so the package has not been passed through the actual Ren'Py Launcher **Lint** command or launched against your project's custom screens, layers, and store variables. Run the first test in a project copy with the old SceneEditor files disabled. Lint is still necessary because Ren'Py itself notes that lint is not a substitute for runtime testing, and the reverse is also true.
+The implementation was compared against:
+
+- ActionEditor3's scene-list and transform-capture approach.
+- Ren'Py `ScreenDisplayable` child/widget behavior.
+- Ren'Py render-tree ownership and child offsets.
+- `renpy.get_displayable_properties` and active screen APIs.
+- `renpy.screenshot_to_bytes` screenshot capture.
+- `renpy.invoke_in_new_context` layer-clearing behavior.
+- Ren'Py screen-language property registrations, including padding and viewport/VPGrid behavior.
+- Ren'Py AST nodes for Say, Menu, Show, Hide, Scene, Python, Jump, Call, Pause, and custom statements.
+
+## Corrections made during validation
+
+Major corrections include:
+
+- Changed the shortcut from Shift+E to Shift+L.
+- Removed the requirement to manually enable `config.developer`.
+- Opened the editor context with `_clear_layers=False` so active UI is not cleared.
+- Captured source location and exact pixels before switching context.
+- Prevented runtime `ScreenDisplayable` objects from entering project JSON.
+- Added recursive child traversal with cycle protection and stable widget-ID reverse mapping.
+- Fixed inherited dialogue replay and added ordered per-frame event queues.
+- Fixed menu captions so prompt and choices remain one interaction.
+- Fixed absolute one-pixel positions and double-applied zoom.
+- Fixed managed-child preview and drag coordinates to remain parent-relative.
+- Fixed duplicate widget IDs during conversion.
+- Fixed branch fallthrough, duplicate labels, per-frame widget overrides, and captured dialogue screen export.
+- Added exact screenshot fallback and runtime-only screen-root references.
+
+## What could not be executed here
+
+The actual Ren'Py 8.5.3 SDK binary and Launcher Lint command were not available in this environment. Therefore, the package still requires a real SDK run against your project's custom screens.
+
+Passing static/model tests does not guarantee that every custom displayable, screen loop, style, action, or project-specific integration will behave perfectly. Use the first-test checklist in `MIGRATION.md` and share any traceback for a targeted compatibility patch.

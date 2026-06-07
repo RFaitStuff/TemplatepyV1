@@ -1,11 +1,50 @@
-﻿I'm sorry, but an uncaught exception occurred.
+2026-06-07 12:07:38 UTC
+Windows-11-10.0.26200-SP0
+Ren'Py 8.5.3.26042304+nightly
 
-While running game code:
-Exception: DynamicImage ['gui/button/navigation_[prefix_]background.png', 'gui/button/[prefix_]background.png']: could not find image. ('gui/button/navigation_insensitive_background.png', 'gui/button/navigation_background.png', and 4 more.)
+Early init took 93 ms
+Loading error handling took 59 ms
+Loading script took 2503 ms
+Loading save slot metadata took 87 ms
+Loading persistent took 2 ms
+ - Init at game/gui.rpy:11 took 277 ms.
+Running init code took 646 ms
+Loading analysis data took 2 ms
+Analyze and compile ATL took 18 ms
+Reloading save slot metadata took 181 ms
+Backing up script files to 'C:\\Users\\Kingf\\AppData\\Roaming/RenPy/backups\\Project Tac':
+Dump and make backups took 144 ms
+Cleaning cache took 0 ms
+Making clean stores took 1 ms
+Initial gc took 58 ms
+DPI scale factor: 1.000000
+nvdrs: Loaded, about to disable thread optimizations.
+nvdrs: Disabled thread optimizations.
+Creating interface object took 259 ms
+Init translation took 0 ms
+Cleaning stores took 0 ms
+Load screen analysis took 0 ms
+Analyze screens took 96 ms
+Save screen analysis took 40 ms
+Save pyanalysis took 13 ms
+Save bytecode took 58 ms
+Running _start took 2 ms
+Interface start took 585 ms
 
--- Full Traceback ------------------------------------------------------------
+Initializing gl2 renderer:
+primary display bounds: (0, 0, 2560, 1440)
+swap interval: 1 frames
+Windowed mode.
+Vendor: 'NVIDIA Corporation'
+Renderer: 'NVIDIA GeForce GTX 1660 SUPER/PCIe/SSE2'
+Version: '4.6.0 NVIDIA 610.47'
+Display Info: <Info({'bitsize': 32, 'bytesize': 4, 'masks': (16711680, 65280, 255, 0), 'shifts': (16, 8, 0, 0), 'losses': (0, 0, 0, 8), 'current_w': 2560, 'current_h': 1440, 'refresh_rate': 165, 'hw': False, 'wm': True, 'video_mem': 268435456, 'blit_hw': False, 'blit_hw_CC': False, 'blit_hw_A': False, 'blit_sw': False, 'blit_sw_CC': False, 'blit_sw_A': False})>
+Screen sizes: virtual=(1920, 1080) physical=(2427, 1365) drawable=(2427, 1365)
+Maximum texture size: 4096x4096
+Could not open 'cache/shaders.txt':
+INFO:renpy_warp_service:service thread started. periodically scanning ports for warp server
 
-Traceback (most recent call last):
+Full traceback:
   File "renpy/common/_layout/screen_main_menu.rpym", line 28, in script
     python hide:
   File "renpy/ast.py", line 1187, in execute
@@ -67,7 +106,9 @@ Traceback (most recent call last):
     raise Exception(error)
 Exception: DynamicImage ['gui/button/navigation_[prefix_]background.png', 'gui/button/[prefix_]background.png']: could not find image. ('gui/button/navigation_insensitive_background.png', 'gui/button/navigation_background.png', and 4 more.)
 
-Windows-11-10.0.26200-SP0 AMD64
-Ren'Py 8.5.3.26042304+nightly
-Project Tac 1.0
-Sun Jun  7 05:07:44 2026
+While running game code:
+Exception: DynamicImage ['gui/button/navigation_[prefix_]background.png', 'gui/button/[prefix_]background.png']: could not find image. ('gui/button/navigation_insensitive_background.png', 'gui/button/navigation_background.png', and 4 more.)
+INFO:renpy_warp_service:connected to renpy warp socket server on :40112
+INFO:renpy_warp_service:closing websocket connection :40112
+INFO:renpy_warp_service:connection replaced, service exiting
+INFO:renpy_warp_service:service closed

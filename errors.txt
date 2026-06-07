@@ -2,9 +2,9 @@
 errors listed below, and try again.
 
 
-File "game/DevTools/Debug/SceneEditor/SceneEditor_screens.rpy", line 181: Line is indented, but the preceding add statement does not expect a block. Please check this line's indentation. You may have forgotten a colon (:).
-    xsize box_width
+File "game/Game/Quests.rpy", line 63: '{' was never closed
+    {
     ^
 
 Ren'Py Version: Ren'Py 8.5.3.26042304+nightly
-Fri May  8 10:44:30 2026
+Sun Jun  7 05:01:19 2026

@@ -63,3 +63,10 @@ label _register_all_quests:
                 {
                     "oid": "pickup",
                     "text": "Pick up the pen",
+                    "flag": "got_pen",
+                    "target": {"item": "lost_pen", "location": "hallway"},
+                },
+            ],
+        )
+
+    return

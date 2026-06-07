@@ -1,36 +1,72 @@
-# Ren'Py Live Studio v2 audit report
+# Architecture and compatibility audit
 
-This package was re-audited against:
+## Final architecture
 
-- The five original SceneEditor files supplied with the project.
-- The current ActionEditor3 `ActionEditor.rpy` architecture and scene-list capture pattern.
-- Ren'Py's current documentation for screens, screen Python APIs, screenshots, displayables, image statements, developer tools, and custom displayables.
-- Ren'Py's current `ScreenDisplayable` implementation, including `child`, `widgets`, `base_widgets`, `visit()`, and non-save fields.
+The main build contains 13 `.rpy` files. Responsibilities are grouped without splitting every small class into its own file:
 
-## Safe architectural conclusions
+```text
+LiveStudio_config.rpy       configuration and compatibility boundary
+LiveStudio_models.rpy       JSON-safe Project/Frame/Scene/UI/Dialogue models
+LiveStudio_project.rpy      inheritance resolver, operations, history, save/load
+LiveStudio_scene.rpy        scene-list capture and scene object editing
+LiveStudio_ui.rpy           screen/widget capture, managed UI, button actions
+LiveStudio_dialogue.rpy     scene-owned dialogue and menu logic
+LiveStudio_capture.rpy      non-destructive runtime capture lifecycle
+LiveStudio_flow.rpy         frame graph and conservative source-AST preview
+LiveStudio_export.rpy       generated code, validators, copy/export, experiments
+LiveStudio_assets.rpy       image/audio browser index
+LiveStudio_canvas.rpy       preview, hierarchy bounds, hit testing, transforms
+LiveStudio_screens.rpy      editor shell and panels
+LiveStudio_bootstrap.rpy    shortcut and context-safe startup
+```
 
-- Runtime layers are not cleared when Live Studio opens.
-- The exact visual capture is produced before the editor screen replaces the view.
-- Runtime displayables are held only in the temporary runtime dictionary and are not serialized into project JSON.
-- Active screens are represented as hierarchical widget trees rather than one flat full-screen record.
-- Dialogue content is stored in scene-owned Dialogue Controllers while Say/Choice visuals remain UI screens.
-- Child frames inherit their parent and store local operations rather than complete copied states.
-- Animation code is excluded from the main package.
-- Writing files is an explicit operation; preview and clipboard copy remain the default workflow.
-- Source block replacement and handwritten patching remain disabled unless explicitly enabled per project.
+Animation is isolated under `optional/animation/` and disabled.
 
-## Important corrections made
+## ActionEditor3 boundary
 
-See `VALIDATION.md` for the full list. The most significant corrections were shortcut collision avoidance, captured-screen export filtering, unique labels, per-frame UI overrides, correct bounds/offset math, deep JSON preservation, and safe generated string literals.
+ActionEditor3 is an animation/transform editor whose scene number and timeline are built around keyframes. Live Studio uses only the proven architectural idea of reading Ren'Py scene lists and opening a tool in a separate context.
 
-## What still requires the target project
+Live Studio Frames are story-state nodes. Animation code is not included in the main build and does not control the project model.
 
-A true Ren'Py test must still cover:
+## Runtime capture lifecycle
 
-1. Launcher parsing and Lint under the exact Ren'Py 8.5.3 build used by the project.
-2. Opening Live Studio during exploration, ordinary dialogue, a menu, and a custom screen.
-3. Capturing project-specific custom displayables and screens with `use`, loops, viewport content, and Python-created children.
-4. Checking whether custom layers are included in `config.layers` and mapped in `SCENE_GROUPS`.
-5. Copying generated source into a disposable test file and running Lint again.
+1. Shift+L records the original game source reference and exact screenshot.
+2. A new Python context is created with `_clear_layers=False`.
+3. The copied scene lists are inspected without calling `renpy.scene()` on the game.
+4. Images and loose displayables become Scene nodes.
+5. Active `ScreenDisplayable` instances become runtime-only Screen records.
+6. Their root children are recursively traversed into a widget hierarchy.
+7. Live displayable references remain in the temporary runtime cache only.
+8. The modal editor covers the game.
+9. Closing the editor discards the tool context and returns to the untouched game context.
 
-The package is suitable for that first integration test, but it should still be installed into a project copy rather than the only working project folder.
+## UI editability levels
+
+- **Editable:** stable widget ID and supported managed type.
+- **Limited:** some properties/actions can be recovered, but not the full source meaning.
+- **Inspect:** visible hierarchy/bounds only.
+
+Captured screens can be converted into managed copies. The converter creates unique widget IDs and preserves supported hierarchy, properties, and structured actions.
+
+## Frame inheritance
+
+An inherited Frame stores operations rather than duplicating the complete visual state:
+
+- `sets` — local property changes.
+- `adds` — new scenes, nodes, screens, controllers, or events.
+- `removes` — hidden/removed inherited objects.
+- `reorders` — local ordering changes.
+
+Resolution recursively combines the parent state with the local operations. Blank and Detached frames are explicit alternatives.
+
+## Dialogue separation
+
+The Dialogue object belongs to a Scene and contains reusable events. Each Frame stores an ordered event queue with multiple commands and at most one interaction.
+
+Say and Choice screens remain UI definitions. A Choice interaction may include an optional speaker/narration prompt and choices in the same Ren'Py menu interaction.
+
+## Export policy
+
+Default behavior is preview/copy only. File output requires an explicit button and creates new timestamped files. Existing-source modifications remain experimental.
+
+The validator checks the editor model before output, but raw Ren'Py statements and arbitrary custom displayables still require SDK lint/runtime testing.

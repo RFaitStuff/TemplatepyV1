@@ -1,58 +1,60 @@
-# Ren'Py Live Studio
-# Core configuration. Keep project-specific adapters out of this file.
+# Ren'Py Live Studio - configuration and compatibility boundaries.
+# Targeted at Ren'Py 8.5.3+. Animation is intentionally not part of this build.
 
-init -950 python in live_studio:
+init -1000 python in live_studio:
     from collections import OrderedDict
     from renpy.store import config
 
-    VERSION = 2
+    VERSION = 3
     TOOL_NAME = "Ren'Py Live Studio"
+    MIN_RENPY_VERSION = (8, 5, 3)
 
-    # Shift+L avoids Ren'Py's built-in Shift+E script-editor shortcut.
+    # Live Studio is a development tool, but it does not require the developer
+    # console flag to be manually set. Disable this before shipping a build if
+    # the tool folder is kept in the game directory.
+    ENABLED = True
+    REQUIRE_DEVELOPER = False
     OPEN_KEY = "shift_K_l"
 
-    # Project data and generated exports are kept outside normal story files.
     PROJECT_DIRECTORY = "live_studio_projects"
     EXPORT_DIRECTORY = "live_studio_exports"
 
-    # These are only enabled through explicit experimental toggles in the UI.
     EXPERIMENTAL_REPLACE_BLOCKS = False
     EXPERIMENTAL_PATCH_FILES = False
 
-    # The exact runtime screenshot is the safest initial preview. Layout mode can
-    # draw editable bounds over it without destroying or re-parenting game UI.
-    DEFAULT_PREVIEW_MODE = "capture"
+    DEFAULT_PREVIEW_MODE = "layout"
+    DEFAULT_NEW_FRAME_MODE = "inherit"
 
-    # Scene layers are grouped into logical scenes in the hierarchy.
-    # Games can replace this mapping from another init block.
+    # A project may override this mapping from a later init block. Each entry
+    # becomes one logical Scene in the frame hierarchy.
     SCENE_GROUPS = OrderedDict([
-        ("Exploration", ("master",)),
+        ("Master", ("master",)),
         ("Dialogue", ("characters", "dialogue")),
         ("Effects", ("effects",)),
     ])
 
     UI_LAYERS = ("screens", "overlay", "transient")
-    EXCLUDED_SCENE_LAYERS = ("screens", "overlay", "transient")
+    # ScreenDisplayable objects are separated into the UI tree. Other loose
+    # displayables on UI/top layers are still captured so nothing visual is lost.
+    EXCLUDED_SCENE_LAYERS = ()
 
-    # UI tree capture is intentionally bounded. Complex custom displayables are
-    # still retained as inspect-only nodes when this limit is reached.
-    UI_CAPTURE_MAX_DEPTH = 24
-    UI_CAPTURE_MAX_NODES = 1200
+    UI_CAPTURE_MAX_DEPTH = 32
+    UI_CAPTURE_MAX_NODES = 1600
 
-    # Editor geometry. The screen itself calculates responsive sizes from these.
-    LEFT_PANEL_MIN = 270
-    LEFT_PANEL_MAX = 360
-    LEFT_PANEL_RATIO = 0.19
-    RIGHT_PANEL_MIN = 260
-    RIGHT_PANEL_MAX = 350
+    # Responsive editor dimensions.
+    LEFT_PANEL_MIN = 280
+    LEFT_PANEL_MAX = 380
+    LEFT_PANEL_RATIO = 0.20
+    RIGHT_PANEL_MIN = 270
+    RIGHT_PANEL_MAX = 360
     RIGHT_PANEL_RATIO = 0.18
-    TOP_BAR_HEIGHT = 46
-    BOTTOM_PANEL_MIN = 220
-    BOTTOM_PANEL_MAX = 360
-    BOTTOM_PANEL_RATIO = 0.28
+    TOP_BAR_HEIGHT = 48
+    BOTTOM_PANEL_MIN = 230
+    BOTTOM_PANEL_MAX = 390
+    BOTTOM_PANEL_RATIO = 0.30
 
     CANVAS_PADDING = 10
-    CANVAS_BACKGROUND = "#111722"
+    CANVAS_BACKGROUND = "#0b111b"
     PANEL_BACKGROUND = "#111827"
     PANEL_ALT_BACKGROUND = "#182235"
     PANEL_BORDER = "#2b3b55"
@@ -62,19 +64,21 @@ init -950 python in live_studio:
     WARNING_COLOR = "#ffca6b"
     ERROR_COLOR = "#ff7d8a"
     SELECTION_COLOR = "#d8c2ff"
+    GUIDE_COLOR = "#68d5ff88"
 
-    # New frames inherit resolved state and only store local changes.
-    DEFAULT_NEW_FRAME_MODE = "inherit"
+    GRID_ENABLED = True
+    GRID_SIZE = 16
+    SNAP_ENABLED = True
+    SNAP_DISTANCE = 8
 
-    # Export is preview/copy first. Files are only written when the user presses
-    # the dedicated Export Files button.
+    # Export previews are always generated in memory first. No files are
+    # written until the explicit Export Files action is used.
     EXPORT_SECTIONS = (
         ("story", "story.rpy"),
         ("screens", "screens.rpy"),
-        ("overrides", "ui_overrides.rpy"),
+        ("helpers", "live_studio_helpers.rpy"),
     )
 
-    # Properties shown in the first inspector implementation.
     SCENE_PROPERTY_GROUPS = (
         ("Transform", (
             ("X", "properties.xpos"),
@@ -83,6 +87,8 @@ init -950 python in live_studio:
             ("Y Anchor", "properties.yanchor"),
             ("X Offset", "properties.xoffset"),
             ("Y Offset", "properties.yoffset"),
+            ("Width", "properties.xsize"),
+            ("Height", "properties.ysize"),
             ("X Zoom", "properties.xzoom"),
             ("Y Zoom", "properties.yzoom"),
             ("Rotation", "properties.rotate"),
@@ -91,6 +97,7 @@ init -950 python in live_studio:
             ("Alpha", "properties.alpha"),
             ("Z-order", "zorder"),
             ("Visible", "visible"),
+            ("Locked", "locked"),
         )),
     )
 
@@ -104,9 +111,47 @@ init -950 python in live_studio:
             ("Y Anchor", "properties.yanchor"),
             ("X Offset", "properties.xoffset"),
             ("Y Offset", "properties.yoffset"),
+            ("Spacing", "properties.spacing"),
         )),
         ("Appearance", (
             ("Alpha", "properties.alpha"),
+            ("Background", "properties.background"),
             ("Visible", "visible"),
+            ("Locked", "locked"),
         )),
+    )
+
+    IMAGE_BUTTON_PROPERTY_GROUPS = (
+        ("Button Images", (
+            ("Idle Image", "properties.idle"),
+            ("Hover Image", "properties.hover"),
+            ("Insensitive Image", "properties.insensitive"),
+            ("Selected Idle", "properties.selected_idle"),
+            ("Selected Hover", "properties.selected_hover"),
+        )),
+    )
+
+    TEXT_PROPERTY_GROUPS = (
+        ("Text", (
+            ("Text", "properties.text"),
+            ("Size", "properties.size"),
+            ("Color", "properties.color"),
+            ("Text Align", "properties.text_align"),
+            ("Bold", "properties.bold"),
+            ("Italic", "properties.italic"),
+        )),
+    )
+
+    ACTION_TYPES = (
+        ("none", "None"),
+        ("jump_frame", "Go to Frame"),
+        ("jump_label", "Jump to Label"),
+        ("call_label", "Call Label"),
+        ("return", "Return"),
+        ("show_screen", "Show Screen"),
+        ("hide_screen", "Hide Screen"),
+        ("set_variable", "Set Variable"),
+        ("change_variable", "Change Variable"),
+        ("run_script", "Run Script"),
+        ("multiple", "Multiple Actions"),
     )

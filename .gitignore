@@ -5,3 +5,4 @@ game/.renpy
 game/libs
 .vscode
 .log
+cache
