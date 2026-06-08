@@ -164,8 +164,8 @@ init python:
         return CharacterAuthorHandle(char_id, speaker)
 
 init 20 python:
-    alice = character_handle("alice", a)
-    alex = character_handle("alex", a2)
+    alice = character_handle("alice", character_speakers.get("alice"))
+    alex = character_handle("alex", character_speakers.get("alex"))
     player = character_handle("player")
 
 init python:

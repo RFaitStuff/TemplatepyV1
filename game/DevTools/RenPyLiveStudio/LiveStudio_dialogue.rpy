@@ -8,9 +8,8 @@ init -950 python in live_studio:
     )
 
     def dialogue_scene(state=None):
-        state = state or resolve_frame()
-        return preferred_dialogue_scene(state)
-
+        """Compatibility helper. Dialogue is logic, not a visual Scene layer."""
+        return None
     def controller_by_id(controller_id, state=None):
         state = state or resolve_frame()
         for controller in state.get("dialogue_controllers", []):
@@ -36,22 +35,12 @@ init -950 python in live_studio:
         controller = selected_dialogue_controller(state)
         if controller is not None:
             return controller
-        scene = None
-        if scene_id:
-            scene, _parent, kind = find_state_item(state, scene_id)
-            if kind != "scene":
-                scene = None
-        if scene is None:
-            scene = dialogue_scene(state)
-        if scene is None:
-            scene = ensure_scene("Dialogue", "dialogue")
-        controller = new_dialogue_controller("Dialogue", scene.get("id") if scene else None)
+        controller = new_dialogue_controller("Dialogue", None)
         controller["source"] = {"created_by": "live_studio"}
         add_change(None, None, controller, root_collection="dialogue_controllers", label="Add dialogue controller")
         select_item(controller.get("id"), "dialogue_controller")
         set_bottom_tab("Dialogue")
         return next((item for item in resolve_frame().get("dialogue_controllers", []) if item.get("id") == controller.get("id")), controller)
-
     def _captured_screen_variable(state, role, variable, fallback_screen):
         candidates = []
         preferred_layer = getattr(config, "say_layer", "screens") if role == "say" else "screens"
@@ -71,25 +60,19 @@ init -950 python in live_studio:
         return None
 
     def capture_runtime_dialogue(state):
+        """Captures current dialogue as frame logic, never as a Scene layer."""
         what = _captured_screen_variable(state, "say", "what", "say")
         who = _captured_screen_variable(state, "say", "who", "say")
         if what is None:
             what = getattr(renpy.store, "_last_say_what", None)
         if who is None:
             who = getattr(renpy.store, "_last_say_who", None)
-
         choice_items = _captured_screen_variable(state, "choice", "items", "choice")
-
         if not what and not choice_items:
             return state
 
-        scene = dialogue_scene(state)
-        if scene is None:
-            scene = new_scene("Dialogue", ["characters", "dialogue"], "dialogue")
-            state.setdefault("scenes", []).append(scene)
-        controller = new_dialogue_controller("Dialogue", scene.get("id"))
+        controller = new_dialogue_controller("Dialogue", None)
         controller["source"] = clone(state.get("source_ref", {}))
-
         if what and not choice_items:
             event = new_dialogue_event("say" if who else "narration")
             event["speaker"] = str(who or "")
@@ -99,11 +82,8 @@ init -950 python in live_studio:
             controller["active_event_id"] = event.get("id")
             controller["selected_event_id"] = event.get("id")
             controller["frame_event_ids"].append(event.get("id"))
-
         if choice_items:
             event = new_dialogue_event("choice")
-            # Ren'Py menus may contain a say/narration caption that is shown
-            # during the same interaction as the choices.
             event["speaker"] = str(who or "") if what else ""
             event["text"] = str(what or "")
             event["choices"] = []
@@ -123,10 +103,8 @@ init -950 python in live_studio:
             controller["active_event_id"] = event.get("id")
             controller["selected_event_id"] = event.get("id")
             controller["frame_event_ids"].append(event.get("id"))
-
         state.setdefault("dialogue_controllers", []).append(controller)
         return state
-
     def dialogue_events(controller=None):
         controller = controller or selected_dialogue_controller()
         return controller.get("events", []) if controller else []

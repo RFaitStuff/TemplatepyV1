@@ -5,7 +5,8 @@ init -1000 python in live_studio:
     from collections import OrderedDict
     from renpy.store import config
 
-    VERSION = 7
+    VERSION = 11
+    RELEASE_VERSION = "3.5.0"
     TOOL_NAME = "Ren'Py Live Studio"
     MIN_RENPY_VERSION = (8, 5, 3)
 
@@ -29,46 +30,70 @@ init -1000 python in live_studio:
     # becomes one logical Scene in the frame hierarchy.
     SCENE_GROUPS = OrderedDict([
         ("Master", ("master",)),
-        ("Dialogue", ("characters", "dialogue")),
+        ("Characters", ("characters",)),
         ("Effects", ("effects",)),
     ])
 
     UI_LAYERS = ("screens", "overlay", "transient", "top")
     # UI-only runtime layers are captured exclusively by the UI subsystem.
     # They are deliberately omitted from the Scene tree and Scene layers panel.
-    EXCLUDED_SCENE_LAYERS = UI_LAYERS
+    EXCLUDED_SCENE_LAYERS = UI_LAYERS + ("dialogue",)
 
     UI_CAPTURE_MAX_DEPTH = 32
     UI_CAPTURE_MAX_NODES = 900
 
+    # Engine/developer screens are implementation details rather than gameplay
+    # UI. Say, choice, quick-menu, and custom project screens remain capturable.
+    UI_CAPTURE_EXCLUDED_SCREEN_NAMES = set((
+        "main_menu", "game_menu", "navigation", "preferences", "save", "load",
+        "file_slots", "confirm", "skip_indicator", "notify", "nvl", "history",
+        "help", "about", "yesno_prompt", "input", "imagemap", "predict_screen",
+        "preferences_screen", "main_menu_screen", "game_menu_screen", "replay_confirm",
+        "yesno", "notify_screen", "skip", "say_attributes", "bubble",
+        "live_studio_editor", "live_studio_script_popup", "live_studio_project_popup",
+        "live_studio_settings_popup", "live_studio_create_popup",
+        "dialogue_defocus", "dialogue_defocus_root", "dialogue_focus",
+        "focus_mask", "developer", "console", "inspector", "performance",
+    ))
+    UI_CAPTURE_EXCLUDED_SCREEN_PATTERNS = (
+        "dialogue_defocus", "defocus", "focus_mask", "prediction",
+        "developer_overlay", "debug_overlay", "debugger", "dev_overlay",
+        "performance_overlay", "live_studio",
+    )
+    UI_CAPTURE_FILTER_ENGINE_SCREENS = True
+    UI_CAPTURE_DIALOGUE_SCREENS = False
+    UI_CAPTURE_ALLOWED_COMMON_ROLES = set(("say", "choice", "quick_menu"))
+
     # Responsive editor dimensions.
-    LEFT_PANEL_MIN = 280
-    LEFT_PANEL_MAX = 330
-    LEFT_PANEL_RATIO = 0.18
-    RIGHT_PANEL_MIN = 285
-    RIGHT_PANEL_MAX = 340
-    RIGHT_PANEL_RATIO = 0.18
-    BOTTOM_TOOLS_MIN = 430
-    BOTTOM_TOOLS_MAX = 560
-    BOTTOM_TOOLS_RATIO = 0.29
-    TOP_BAR_HEIGHT = 42
-    FRAME_NAV_HEIGHT = 38
-    BOTTOM_PANEL_MIN = 270
-    BOTTOM_PANEL_MAX = 340
-    BOTTOM_PANEL_RATIO = 0.31
+    # Wider side panels and a taller asset browser match modern editor layouts
+    # while still scaling down safely on 1280x720 projects.
+    LEFT_PANEL_MIN = 300
+    LEFT_PANEL_MAX = 390
+    LEFT_PANEL_RATIO = 0.205
+    RIGHT_PANEL_MIN = 340
+    RIGHT_PANEL_MAX = 470
+    RIGHT_PANEL_RATIO = 0.245
+    BOTTOM_TOOLS_MIN = 340
+    BOTTOM_TOOLS_MAX = 470
+    BOTTOM_TOOLS_RATIO = 0.245
+    TOP_BAR_HEIGHT = 52
+    FRAME_NAV_HEIGHT = 48
+    BOTTOM_PANEL_MIN = 260
+    BOTTOM_PANEL_MAX = 390
+    BOTTOM_PANEL_RATIO = 0.355
 
     CANVAS_PADDING = 10
-    CANVAS_BACKGROUND = "#0b111b"
-    PANEL_BACKGROUND = "#111827"
-    PANEL_ALT_BACKGROUND = "#182235"
-    PANEL_BORDER = "#2b3b55"
-    TEXT_COLOR = "#e8eef8"
-    MUTED_TEXT_COLOR = "#9eabc0"
-    ACCENT_COLOR = "#7fb2ff"
-    WARNING_COLOR = "#ffca6b"
+    CANVAS_BACKGROUND = "#080d13"
+    PANEL_BACKGROUND = "#0d141d"
+    PANEL_ALT_BACKGROUND = "#101923"
+    PANEL_BORDER = "#24303e"
+    TEXT_COLOR = "#edf1f7"
+    MUTED_TEXT_COLOR = "#91a0b3"
+    ACCENT_COLOR = "#9867ff"
+    WARNING_COLOR = "#ffc86a"
     ERROR_COLOR = "#ff7d8a"
-    SELECTION_COLOR = "#d8c2ff"
-    GUIDE_COLOR = "#39ff7a88"
+    SELECTION_COLOR = "#d6c7ff"
+    GUIDE_COLOR = "#42df7d88"
 
     GRID_ENABLED = False
     GRID_SIZE = 16
@@ -86,11 +111,11 @@ init -1000 python in live_studio:
     # Compact editor chrome. These values are also used by custom scrollbar
     # styles in LiveStudio_screens.rpy.
     SCROLLBAR_WIDTH = 4
-    ASSET_TREE_WIDTH = 210
-    LAYER_THUMB_WIDTH = 58
+    ASSET_TREE_WIDTH = 205
+    LAYER_THUMB_WIDTH = 52
     LAYER_THUMB_HEIGHT = 38
-    ASSET_THUMB_WIDTH = 132
-    ASSET_THUMB_HEIGHT = 82
+    ASSET_THUMB_WIDTH = 120
+    ASSET_THUMB_HEIGHT = 76
 
     # Export previews are always generated in memory first. No files are
     # written until the explicit Export Files action is used.

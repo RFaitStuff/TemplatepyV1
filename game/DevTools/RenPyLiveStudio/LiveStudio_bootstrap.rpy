@@ -60,12 +60,19 @@ init 900 python in live_studio:
         # Clear the prior run's result because the opening source statement may
         # have changed since Live Studio was last opened.
         runtime.pop("source_candidates", None)
+        runtime.pop("source_candidates_key", None)
 
         window_value = getattr(renpy.store, "_window", None)
         skipping_value = getattr(renpy.store, "_skipping", None)
         quick_menu_exists = hasattr(renpy.store, "quick_menu")
         quick_menu_value = getattr(renpy.store, "quick_menu", None)
         runtime["opened"] = True
+        # Use one animation clock for the complete editor session. Ren'Py
+        # restarts interactions when panels or selection change; resetting ATL
+        # time on each restart makes otherwise unchanged objects replay their
+        # entrance animation.
+        runtime["canvas_animation_epoch"] = time.time()
+        runtime["last_canvas_click"] = None
 
         try:
             if hasattr(renpy.store, "_window"):

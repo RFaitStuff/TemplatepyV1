@@ -1,8 +1,8 @@
-default Coolness = 0
-default Strength = 0
-default Intelligence = 0
-default Charisma = 0
-default Agility = 0
+default Coolness = PLAYER_STAT_DEFS["Coolness"]["default"]
+default Strength = PLAYER_STAT_DEFS["Strength"]["default"]
+default Intelligence = PLAYER_STAT_DEFS["Intelligence"]["default"]
+default Charisma = PLAYER_STAT_DEFS["Charisma"]["default"]
+default Agility = PLAYER_STAT_DEFS["Agility"]["default"]
 
-default Lust = 0
-default Love = 0
+default Lust = PLAYER_STAT_DEFS["Lust"]["default"]
+default Love = PLAYER_STAT_DEFS["Love"]["default"]

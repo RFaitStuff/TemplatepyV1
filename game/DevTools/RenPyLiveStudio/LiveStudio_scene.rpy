@@ -250,8 +250,10 @@ init -970 python in live_studio:
             group_name = scene_group_for_layer(layer)
             scene = by_name.get(group_name)
             if scene is None:
-                scene_type = "dialogue" if "dialogue" in group_name.lower() else "scene"
+                scene_type = "scene"
                 scene = new_scene(group_name, [], scene_type)
+                scene["id"] = stable_capture_id("scene", group_name, ",".join(SCENE_GROUPS.get(group_name, ())))
+                scene["source"] = {"captured_by": "runtime", "stable_key": group_name}
                 by_name[group_name] = scene
                 result.append(scene)
             if layer not in scene["source_layers"]:
@@ -276,6 +278,7 @@ init -970 python in live_studio:
                     },
                     editability="editable" if image_name else "inspect",
                 )
+                node["id"] = stable_capture_id("scene_node", layer, tag, image_name or "", displayable.__class__.__name__)
                 scene["nodes"].append(node)
                 runtime["scene_displayables"][node["id"]] = displayable
 

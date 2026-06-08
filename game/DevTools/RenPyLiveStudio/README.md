@@ -1,15 +1,15 @@
-# Ren'Py Live Studio — Visual Engine v3.2
+# Ren'Py Live Studio — Visual Engine v3.3.1
 
 Ren'Py Live Studio is an in-game visual authoring tool for Ren'Py. It captures the current running game, opens a modal editor over it, and lets you create inherited story frames, scene visuals, UI screens, dialogue, choices, button behavior, and flow without having to hand-write the initial Ren'Py script.
 
 ## Start it
 
 1. Replace the previous `RenPyLiveStudio` folder with this complete folder.
-2. Launch the project normally from the Ren'Py SDK Launcher.
+2. Launch the project normally.
 3. Reach the scene you want to edit.
 4. Press **Shift+L**.
 
-No manual `config.developer = True` line is required. Disable `ENABLED` in `LiveStudio_config.rpy`, or remove the folder, before shipping a public build.
+Disable `ENABLED` in `LiveStudio_config.rpy`, or remove the folder, before shipping a public build.
 
 ## Project model
 
@@ -28,20 +28,47 @@ A Frame is a story state, not an animation timestamp. The normal **Next Frame** 
 
 The Dialogue object belongs to a Scene. It stores ordered commands and the current interaction. Say and Choice screens are separate UI definitions that control appearance.
 
-## v3.2 editor layout
+## v3.3 editor layout
 
-The shell follows the original editor's information hierarchy while supporting the newer frame/UI/dialogue model:
+The editor shell now follows the supplied modern dark mockup while retaining the original tool's working project and creation controls:
 
-- **Top:** zoom, snap, save, project, preview, script, settings, and close.
-- **Left upper:** context-sensitive Properties with compact editable text boxes.
-- **Left lower:** current-frame hierarchy split between Scene and UI.
-- **Center:** the dominant photo-editor-style canvas.
-- **Below canvas:** inherited-frame navigation.
-- **Right:** Scene Layers or UI Layers with hierarchy, thumbnails, visibility, and lock state; Structure, History, and Debug remain tabbed.
-- **Bottom:** Unity-style project asset tree plus asset tiles, or the Dialogue/Script workspace.
-- **Bottom right:** compact selection, creation, ordering, and frame tools.
+- **Top bar:** fit-aware zoom controls, workspace switcher, Save, Project, Preview, Extract Script, Settings, and Close.
+- **Left:** context-sensitive Properties above a Scene Tree that still switches between complete Scene and UI hierarchies. There is intentionally no Scene Tree search field.
+- **Center:** the live canvas, with a dedicated Frames strip directly below it.
+- **Frames strip:** Previous, source-aware Next, inherited-frame insertion, blank-frame insertion, and frame count.
+- **Right upper:** Layers, History, and Inspector. Layers keep separate Scene/UI modes, thumbnails, visibility, locking, ordering, deletion, and the Add menu.
+- **Bottom center:** a Unity-style Assets browser with only **Images** and **Audio** as top-level categories. Real project folders provide character/background/UI organization without duplicate tabs. Grid and list views are available.
+- **Bottom right:** Select, Move, Scale, Rotate, object editing, arrangement, locking, undo/redo, and a compact Add popup that preserves the original Scene/UI/dialogue/frame creation commands.
+- **Popups:** Project, Settings, Create, and Extract Script open over the editor instead of replacing the asset workspace.
 
-All editor scrollbars use a narrow four-pixel style.
+All editor scrollbars remain narrow, and the layout scales from common 1280×720 projects through 1920×1080 projects.
+
+## v3.3 future-frame discovery
+
+Live Studio now stores a JSON-safe AST node key alongside the normal source filename and line. Future-state discovery first resolves the interaction represented by the current frame, then walks from its successor. This corrects the common dialogue case where Ren'Py's runtime context already points at the next node and the old implementation accidentally skipped that first future line.
+
+The frame bar behaves as follows:
+
+- A stored project edge/frame is opened normally.
+- One statically discoverable future interaction becomes **Import Next**.
+- Multiple menu/condition branches become **Choose Future** and are listed in the right-side Inspector.
+- Branch placeholder frames include their first branch interaction instead of skipping it.
+
+This remains a conservative static preview. Dynamic Python expressions, runtime-computed jumps, and arbitrary custom statements are not executed by the editor.
+
+## v3.2.2 interaction hotfix
+
+- Captured labels are escaped before Ren'Py interpolation, so incomplete dynamic text cannot crash the hierarchy, layers, dialogue list, assets, or generated-code preview.
+- Fixed the UI Layers button falling back to Scene mode. Scene and UI modes are synchronized across the hierarchy and Layers panel, and only the active domain can be selected or transformed on the canvas.
+- Locked objects cannot be canvas-selected.
+- Re-selecting the current item and clicking without moving no longer restart the editor or add no-op history.
+- Frame switches enter Editable Layout and refresh immediately instead of waiting for a canvas selection.
+- Selection/panel restarts keep a continuous canvas animation clock instead of replaying entrance effects.
+- Normal drag keeps the current selection when objects overlap; double-click selects the highest different object under the pointer.
+- Resize keeps the opposite edge anchored, and rotation uses the measured object center.
+- Inspector inputs keep a local typing buffer and commit on Enter, focus change, selection/frame change, save, or close.
+- **Script** is now a top-bar popup; it is no longer an Assets-area tab.
+- **Preview** is intentionally a no-op notification until full-scene preview is implemented; Exact/Editable controls remain in Debug.
 
 ## v3.2 fixes
 
@@ -87,13 +114,13 @@ is kept as the dynamic Ren'Py text value instead of being frozen to `Monday`. Th
 - X/Y and width/height fields are paired.
 - Position, size/layout, text, appearance, and button-image groups are collapsible.
 - Inherited values show a revert button.
-- Property typing updates the active resolved frame in place and creates one field-level undo entry after typing pauses, rather than rebuilding a large captured UI tree per character.
+- Property typing stays in a local field buffer and creates one field-level undo entry when committed, rather than rebuilding a large captured UI tree per character.
 
 ### Assets
 
 - A Unity-style folder tree is built from the real source paths behind registered Ren'Py images and audio files.
 - The right side shows only the current folder or search results.
-- Images, audio, characters, backgrounds, and GUI categories remain available.
+- Images and Audio are the only top-level categories; character, background, GUI, and other organization comes from the actual source-folder tree.
 - Search is applied on Enter or the Search button, not on every keystroke.
 - Thumbnails are lazy, paged, cached, and failure-isolated.
 - Ren'Py's parameterized `text` image and other non-previewable registered images remain filtered.
@@ -122,7 +149,7 @@ Existing screens are captured as runtime UI records. Live Studio shows their hie
 
 The normal workflow remains copy-first:
 
-1. Open **Script**.
+1. Open **Extract Script**.
 2. Review `story.rpy`, `screens.rpy`, and `live_studio_helpers.rpy` separately.
 3. Copy the section you want.
 
@@ -140,4 +167,4 @@ Animation is intentionally excluded from the main build. The disabled integratio
 
 ## Required real-project check
 
-This build was compiled, model-tested, and compatibility-audited, but your project must still be tested in the real Ren'Py 8.5.3 nightly runtime. Run Launcher **Lint**, then test Live Studio during exploration, dialogue, and a choice menu.
+This build was Python-compiled, source-flow mock-tested, screen-expression checked, and compatibility-audited, but your project must still be tested in the real Ren'Py 8.5.3 nightly runtime. Run Launcher **Lint**, then test Live Studio during exploration, dialogue, and a choice menu.

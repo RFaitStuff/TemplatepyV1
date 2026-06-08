@@ -33,15 +33,15 @@ init python:
 
     import re as _re
     _CD_RE = _re.compile(r"^(?:(\d+)d(a)?|(no)(a)?)$", _re.IGNORECASE)
-    RELATIONSHIP_STATS = ("love", "lust", "trust", "respect")
-    MOOD_AXES = ("happy", "sad", "angry", "nervous")
-    REACTION_TAGS = ("embarrassed", "jealous", "shy", "confused", "confident")
-    STATUS_TAGS = ("tired", "sick", "hurt")
+    RELATIONSHIP_STATS = tuple(CHARACTER_STAT_DEFS.keys())
+    MOOD_AXES = tuple(MOOD_DEFS.keys())
+    REACTION_TAGS = tuple(REACTION_DEFS.keys())
+    STATUS_TAGS = tuple(STATUS_DEFS.keys())
 
     def ensure_character_state(char):
         d = character_stats.setdefault(char, {})
         for stat_name in RELATIONSHIP_STATS:
-            d.setdefault(stat_name, 0)
+            d.setdefault(stat_name, CHARACTER_STAT_DEFS.get(stat_name, {}).get("default", 0))
         moods = d.setdefault("moods", {})
         if not isinstance(moods, dict):
             moods = {}
@@ -53,13 +53,13 @@ init python:
             reactions = {}
             d["reactions"] = reactions
         for reaction_name in REACTION_TAGS:
-            reactions.setdefault(reaction_name, False)
+            reactions.setdefault(reaction_name, REACTION_DEFS.get(reaction_name, {}).get("default", False))
         statuses = d.setdefault("statuses", {})
         if not isinstance(statuses, dict):
             statuses = {}
             d["statuses"] = statuses
         for status_name in STATUS_TAGS:
-            statuses.setdefault(status_name, 0)
+            statuses.setdefault(status_name, STATUS_DEFS.get(status_name, {}).get("default", 0))
         unlocked_character_facts.setdefault(char, set())
         return d
 
@@ -106,7 +106,7 @@ init python:
             new = d.get(stat, 0) + amount
             d[stat] = new
             # Trigger HUD Characters-button glow when love or lust grow.
-            if amount > 0 and stat in ("love", "lust"):
+            if amount > 0 and stat in RELATIONSHIP_STATS:
                 try:
                     _hud_trigger_char_glow(stat)
                 except NameError:
@@ -356,6 +356,8 @@ init python:
     # ---- schedule lookup -------------------------------------------------
     def npc_location(char):
         """Where is `char` right now according to their schedule? Or None."""
+        if not system_enabled("schedules"):
+            return None
         try:
             tod = get_time_of_day(time)
         except NameError:

@@ -1,23 +1,31 @@
-default systems_enabled = {
+define SYSTEM_DEFAULTS = {
     "dialogue": True,
     "interactions": True,
     "stamina": True,
     "time": True,
     "quests": True,
-    "mood": True,
+    "moods": True,
+    "schedules": True,
+    "inventory": True,
     "gallery": True,
     "notifications": True,
     "debug_tools": True,
 }
+
+default systems_enabled = dict(SYSTEM_DEFAULTS)
 
 define time_skip_sleep_hour = 2
 define time_skip_wake_hour = 8
 
 init -95 python:
     def system_enabled(name):
+        if name == "mood":
+            name = "moods"
         return bool(systems_enabled.get(name, True))
 
     def set_system_enabled(name, value=True):
+        if name == "mood":
+            name = "moods"
         systems_enabled[name] = bool(value)
         return None
 

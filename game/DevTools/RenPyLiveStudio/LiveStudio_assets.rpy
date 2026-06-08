@@ -19,12 +19,12 @@ init -860 python in live_studio:
     asset_current_path = ()
     asset_expanded_paths = set([()])
 
+    # Keep the top-level browser simple. Character, background, and GUI
+    # organization is represented by the real folder tree instead of duplicate
+    # category tabs.
     ASSET_CATEGORIES = (
         ("images", "Images"),
         ("audio", "Audio"),
-        ("characters", "Characters"),
-        ("backgrounds", "Backgrounds"),
-        ("gui", "GUI"),
     )
 
     ASSET_SORT_MODES = ("Name A-Z", "Name Z-A", "Recent", "Oldest")
@@ -142,6 +142,9 @@ init -860 python in live_studio:
         return images
 
     def ensure_assets():
+        global asset_category
+        if asset_category not in ("images", "audio"):
+            asset_category = "images"
         if asset_cache is None or audio_cache is None:
             refresh_assets(restart_ui=False)
 
@@ -149,10 +152,7 @@ init -860 python in live_studio:
         ensure_assets()
         if asset_category == "audio":
             return list(audio_cache or [])
-        values = [item for item in (asset_cache or []) if _previewable_registered_image(item.get("name"), _registered_image_target(item.get("name")))]
-        if asset_category != "images":
-            values = [item for item in values if item.get("bucket") == asset_category]
-        return values
+        return [item for item in (asset_cache or []) if _previewable_registered_image(item.get("name"), _registered_image_target(item.get("name")))]
 
     def _build_asset_tree():
         cache_key = asset_category
@@ -211,12 +211,32 @@ init -860 python in live_studio:
         editable = True
         returnable = False
 
+        def __init__(self):
+            try:
+                super(AssetFilterInputValue, self).__init__()
+            except Exception:
+                pass
+
         def get_text(self):
             return str(asset_filter_draft)
 
         def set_text(self, value):
-            global asset_filter_draft
-            asset_filter_draft = str(value or "")
+            # Match the original SceneEditor behavior: every typed character is
+            # immediately reflected by the asset results. Keeping a separate
+            # committed query meant the Input changed while the browser still
+            # filtered with the old value until Enter/Go was pressed.
+            global asset_filter, asset_filter_draft, asset_page
+            value = str(value or "")
+            if value == asset_filter_draft and value == asset_filter:
+                return
+            asset_filter_draft = value
+            asset_filter = value
+            asset_page = 0
+            asset_view_cache.clear()
+            try:
+                renpy.restart_interaction()
+            except Exception:
+                pass
 
         def enter(self):
             apply_asset_filter()

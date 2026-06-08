@@ -12,6 +12,14 @@ init -980 python in live_studio:
     selected_item_kind = None
     selected_tree_tab = "Scene"
     bottom_tab = "Assets"
+    script_popup_open = False
+    project_popup_open = False
+    settings_popup_open = False
+    create_popup_open = False
+    future_popup_open = False
+    script_export_section = "story"
+    workspace_mode = "Default"
+    asset_view_mode = "grid"
     preview_mode = DEFAULT_PREVIEW_MODE
     tool_mode = "select"
     right_panel_tab = "Layers"
@@ -32,7 +40,16 @@ init -980 python in live_studio:
         "scene_displayables": {},
         "ui_displayables": {},
         "screen_roots": {},
+        "screen_raw_roots": {},
+        "screen_frozen_roots": {},
         "screen_displayables": {},
+        "screen_index": {},
+        "active_screen_ids": set(),
+        "active_screen_names": [],
+        "dialogue_presentation_roots": [],
+        "frame_preview_refs": {},
+        "active_preview_frame_id": None,
+        "active_preview_source_frame_id": None,
         "drag": None,
         "resize": None,
         "clipboard": None,
@@ -49,9 +66,13 @@ init -980 python in live_studio:
         "preview_source_cache": {},
         "canvas_instance": None,
         "pending_input_edits": {},
+        "editor_input_values": {},
         "input_last_edit_time": 0.0,
         "drag_revision": 0,
         "last_drag_render_time": 0.0,
+        "canvas_animation_epoch": time.time(),
+        "last_canvas_click": None,
+        "source_flow_status": "",
     }
     class EditorInputValue(renpy.store.InputValue):
         """A stable, dynamic InputValue used by the Live Studio inspector.
@@ -65,8 +86,13 @@ init -980 python in live_studio:
         returnable = False
 
         def __init__(self, kind, *arguments):
+            try:
+                super(EditorInputValue, self).__init__()
+            except Exception:
+                pass
             self.kind = str(kind)
             self.arguments = tuple(arguments)
+            self.buffer = None
 
         def __eq__(self, other):
             return type(self) is type(other) and self.kind == other.kind and self.arguments == other.arguments
@@ -74,7 +100,7 @@ init -980 python in live_studio:
         def __ne__(self, other):
             return not self == other
 
-        def get_text(self):
+        def current_text(self):
             try:
                 if self.kind == "project_name":
                     value = project_name()
@@ -93,26 +119,71 @@ init -980 python in live_studio:
             except Exception:
                 return ""
 
+        def get_text(self):
+            if self.buffer is not None:
+                return self.buffer
+            return self.current_text()
+
         def set_text(self, value):
-            # Input widgets already redraw themselves as their content changes.
-            # Updating the whole editor interaction for every keystroke was one
-            # of the largest sources of inspector lag, especially when the
-            # current frame contained a large captured UI tree.
+            # Keep an editable buffer while the field has focus. Parsing and
+            # mutating numeric properties on every keystroke made values such as
+            # "-24" or "0.5" impossible to enter because the temporary "-" and
+            # "0." states were immediately rejected and replaced.
+            self.buffer = str(value)
+
+        def commit(self):
+            if self.buffer is None:
+                return False
+            value = self.buffer
+            self.buffer = None
+            old_text = self.current_text()
+            if value == old_text:
+                return False
             if self.kind == "project_name":
                 set_project_name_live(value)
             elif self.kind == "frame_name":
                 set_frame_name_live(self.arguments[0], value)
             elif self.kind == "property":
                 set_property_value_live(self.arguments[0], self.arguments[1], value)
+                _flush_pending_key(_pending_edit_key("property", current_frame_id, self.arguments[0], self.arguments[1]))
             elif self.kind == "action":
                 set_action_value_live(self.arguments[0], self.arguments[1], value)
+                _flush_pending_key(_pending_edit_key("action", current_frame_id, self.arguments[0], self.arguments[1]))
+            return True
 
         def enter(self):
-            flush_pending_input_edits()
+            if self.commit():
+                restart()
             return None
 
+        def lose_focus(self):
+            if self.commit():
+                restart()
+
     def editor_input_value(kind, *arguments):
-        return EditorInputValue(kind, *arguments)
+        frame_key = current_frame_id if str(kind) in ("property", "action") else None
+        key = (frame_key, str(kind), tuple(arguments))
+        cache = runtime.setdefault("editor_input_values", {})
+        value = cache.get(key)
+        if value is None:
+            value = EditorInputValue(kind, *arguments)
+            cache[key] = value
+        if len(cache) > 320:
+            for old_key in list(cache.keys())[:-240]:
+                old_value = cache.get(old_key)
+                if old_value is not None and old_value.buffer is not None:
+                    continue
+                cache.pop(old_key, None)
+        return value
+
+    def commit_buffered_editor_inputs():
+        changed = False
+        for value in list(runtime.setdefault("editor_input_values", {}).values()):
+            try:
+                changed = value.commit() or changed
+            except Exception as exc:
+                log_diagnostic("warning", "Inspector value could not be committed", repr(exc))
+        return changed
 
 
     def restart():
@@ -210,13 +281,28 @@ init -980 python in live_studio:
         return True
 
     def flush_pending_input_edits(restart_ui=False):
+        buffered_changed = commit_buffered_editor_inputs()
         pending = runtime.setdefault("pending_input_edits", {})
-        changed = False
+        changed = buffered_changed
         for key in list(pending.keys()):
             changed = _flush_pending_key(key) or changed
         if restart_ui and changed:
             restart()
         return changed
+
+    def invalidate_view_caches(clear_runtime_previews=False, reason="view change"):
+        """Refresh editor-derived views without discarding captured roots."""
+        runtime["last_invalidation_reason"] = str(reason)
+        runtime["state_revision"] = int(runtime.get("state_revision", 0)) + 1
+        runtime["canvas_cache"] = {}
+        runtime["canvas_item_cache"] = {}
+        runtime["bounds_cache"] = {}
+        runtime["widget_override_cache"] = {}
+        runtime["preview_source_cache"] = {}
+        runtime["item_thumbnail_cache"] = {}
+        if clear_runtime_previews:
+            runtime["captured_screen_preview_cache"] = {}
+        request_canvas_redraw()
 
     def flush_pending_input_edits_if_idle(delay=0.65):
         if not runtime.get("pending_input_edits"):
@@ -231,12 +317,11 @@ init -980 python in live_studio:
                 cache.pop(key, None)
 
     def _mark_live_item_edit(item_id, clear_screen_preview=True):
-        """Invalidates render/layout caches without deep-resolving the frame.
+        """Invalidates render/layout caches for one item edit.
 
-        The current resolved state is updated in place while an input field is
-        active. Descendant-frame caches are discarded when the edit session is
-        committed, so typing does not clone the entire captured screen tree for
-        every character.
+        Resolved frame states are immutable derived snapshots. Runtime preview
+        roots are retained unless the edited item belongs to that captured
+        screen, preventing unrelated Scene edits from rebuilding gameplay UI.
         """
         runtime["state_revision"] = int(runtime.get("state_revision", 0)) + 1
         runtime["canvas_cache"] = {}
@@ -265,22 +350,36 @@ init -980 python in live_studio:
         global project_dirty, preview_mode
         frame = current_frame()
         if frame is None or not item_id:
-            return
+            return False
         state = resolve_frame()
         item, _parent_id, item_kind = find_state_item(state, item_id)
-        current = get_path_value(item or {}, path, "")
+        if item is None:
+            log_diagnostic("warning", "Property edit targeted a missing item", {"item_id": item_id, "path": path})
+            return False
+        if item_kind == "ui_node":
+            screen = screen_for_node(state, item_id) if "screen_for_node" in globals() else None
+            if screen is not None and not screen.get("managed") and not item.get("widget_id"):
+                log_diagnostic("warning", "Runtime UI node has no authored widget id and is inspect-only", {
+                    "screen": screen.get("name"), "item": item.get("name"), "path": path,
+                })
+                try:
+                    renpy.notify("This runtime UI item has no Ren'Py id. Convert the screen explicitly before editing it.")
+                except Exception:
+                    pass
+                return False
+        current = get_path_value(item, path, "")
         value = parse_editor_value(text, current)
         _begin_pending_frame_edit("property", item_id, path, "Edit {}".format(path))
         frame.setdefault("changes", {}).setdefault("sets", {}).setdefault(item_id, {})[str(path)] = clone(value)
-        # Keep the current read-only snapshot coherent during the edit session.
-        # This avoids re-cloning inherited scenes and hundreds of UI nodes on
-        # every keypress while the Input displayable already handles its own text.
-        if item is not None:
-            set_path_value(item, path, clone(value))
+        # Resolved frame states remain derived snapshots. Earlier builds mutated
+        # the cached item in place, which could leave a value visible after undo
+        # or carry a partial edit into descendants. Input is buffered, so a clean
+        # resolve at commit time is both correct and fast enough.
         if str(path).startswith(("properties.", "binding.")) and item_kind in ("scene_node", "ui_node"):
             preview_mode = "layout"
         project_dirty = True
-        _mark_live_item_edit(item_id, clear_screen_preview=(item_kind == "ui_node"))
+        invalidate_resolved_cache(False, "property committed: {}".format(path))
+        return True
 
     def set_action_value_live(node_id, field, text):
         state = resolve_frame()
@@ -294,10 +393,9 @@ init -980 python in live_studio:
         _begin_pending_frame_edit("action", node_id, field, "Edit button action")
         frame = current_frame()
         frame.setdefault("changes", {}).setdefault("sets", {}).setdefault(node_id, {})["actions"] = actions
-        node["actions"] = clone(actions)
         global project_dirty
         project_dirty = True
-        _mark_live_item_edit(node_id, clear_screen_preview=False)
+        invalidate_resolved_cache(False, "action committed")
 
     def project_setting(name, default=False):
         return ensure_project().get("settings", {}).get(name, default)
@@ -306,11 +404,24 @@ init -980 python in live_studio:
         global project_dirty
         ensure_project().setdefault("settings", {})[str(name)] = clone(value)
         project_dirty = True
-        invalidate_resolved_cache()
+        # Editor/capture preferences do not alter the resolved frame model.
+        # Clearing it caused unrelated screen roots to rebuild after toggles.
+        invalidate_view_caches(False, "setting changed: {}".format(name))
         restart()
 
     def toggle_project_setting(name):
         set_project_setting(name, not bool(project_setting(name, False)))
+
+    def toggle_ui_capture_engine_filter():
+        """Toggle whether Ren'Py/common/developer chrome is filtered from UI capture.
+
+        The setting applies to future captures and fresh captures. It does not
+        silently recapture the current frame, because that could discard local
+        editor changes.
+        """
+        new_value = not bool(project_setting("ui_capture_filter_engine_screens", UI_CAPTURE_FILTER_ENGINE_SCREENS))
+        set_project_setting("ui_capture_filter_engine_screens", new_value)
+        log_diagnostic("info", "UI capture engine-screen filter {}".format("enabled" if new_value else "disabled"), "Use Fresh Capture to rebuild this frame with the new capture filter.")
 
     def request_canvas_redraw():
         canvas = runtime.get("canvas_instance")
@@ -320,7 +431,8 @@ init -980 python in live_studio:
             except Exception:
                 pass
 
-    def invalidate_resolved_cache(clear_runtime_previews=True):
+    def invalidate_resolved_cache(clear_runtime_previews=False, reason="project mutation"):
+        runtime["last_invalidation_reason"] = str(reason)
         resolved_cache.clear()
         runtime["state_revision"] = int(runtime.get("state_revision", 0)) + 1
         runtime["canvas_cache"] = {}
@@ -331,6 +443,7 @@ init -980 python in live_studio:
         if clear_runtime_previews:
             runtime["captured_screen_preview_cache"] = {}
             runtime["item_thumbnail_cache"] = {}
+        request_canvas_redraw()
 
     def frame_by_id(frame_id):
         return ensure_project().get("frames", {}).get(frame_id)
@@ -428,6 +541,21 @@ init -980 python in live_studio:
         state = state or resolve_frame()
         return find_state_item(state, selected_item_id)
 
+    def validate_selection(state=None):
+        global selected_item_id, selected_item_kind
+        if not selected_item_id:
+            return False
+        state = state or resolve_frame()
+        item, _parent, kind = find_state_item(state, selected_item_id)
+        if item is not None:
+            if selected_item_kind != kind:
+                selected_item_kind = kind
+            return False
+        selected_item_id = None
+        selected_item_kind = None
+        runtime["drag"] = None
+        return True
+
     def select_item_live(item_id, kind=None):
         """Changes selection without rebuilding the whole editor screen.
 
@@ -437,37 +565,52 @@ init -980 python in live_studio:
         """
         global selected_item_id, selected_item_kind, bottom_tab
         flush_pending_input_edits()
-        selected_item_id = item_id
         if kind is None:
             _item, _parent, kind = find_state_item(resolve_frame(), item_id)
+        if item_id == selected_item_id and kind == selected_item_kind:
+            return False
+        selected_item_id = item_id
         selected_item_kind = kind
         if kind in ("dialogue_controller", "dialogue_event", "dialogue_choice"):
             bottom_tab = "Dialogue"
         request_canvas_redraw()
+        return True
 
     def select_item(item_id, kind=None):
-        select_item_live(item_id, kind)
-        restart()
+        if select_item_live(item_id, kind):
+            restart()
 
     def clear_selection_live():
         global selected_item_id, selected_item_kind
         flush_pending_input_edits()
+        if selected_item_id is None and selected_item_kind is None:
+            return False
         selected_item_id = None
         selected_item_kind = None
         request_canvas_redraw()
+        return True
 
     def clear_selection():
-        clear_selection_live()
-        restart()
+        if clear_selection_live():
+            restart()
 
     def select_frame(frame_id):
-        global current_frame_id, selected_item_id, selected_item_kind
+        global current_frame_id, selected_item_id, selected_item_kind, preview_mode
         flush_pending_input_edits()
         if frame_by_id(frame_id) is None:
             return
+        if frame_id == current_frame_id:
+            return
         current_frame_id = frame_id
+        if "activate_runtime_preview_refs" in globals():
+            activate_runtime_preview_refs(frame_id)
         selected_item_id = None
         selected_item_kind = None
+        preview_mode = "layout"
+        runtime["drag"] = None
+        runtime.pop("source_candidates", None)
+        runtime.pop("source_candidates_key", None)
+        invalidate_view_caches(clear_runtime_previews=False)
         restart()
 
     def _history_push(entry):
@@ -497,7 +640,7 @@ init -980 python in live_studio:
         })
 
     def undo():
-        global current_frame_id, project_dirty
+        global current_frame_id, project_dirty, preview_mode
         flush_pending_input_edits()
         if not history:
             return
@@ -516,11 +659,15 @@ init -980 python in live_studio:
         elif entry_type == "remove_frame":
             _restore_frame_internal(entry.get("frame"), entry.get("index", -1))
             current_frame_id = entry.get("frame", {}).get("id")
+        if "activate_runtime_preview_refs" in globals():
+            activate_runtime_preview_refs(current_frame_id)
         project_dirty = True
+        preview_mode = "layout"
+        validate_selection()
         restart()
 
     def redo():
-        global current_frame_id, project_dirty
+        global current_frame_id, project_dirty, preview_mode
         flush_pending_input_edits()
         if not redo_stack:
             return
@@ -539,7 +686,11 @@ init -980 python in live_studio:
         elif entry_type == "remove_frame":
             _remove_frame_internal(entry.get("frame", {}).get("id"))
             current_frame_id = entry.get("previous_frame_id")
+        if "activate_runtime_preview_refs" in globals():
+            activate_runtime_preview_refs(current_frame_id)
         project_dirty = True
+        preview_mode = "layout"
+        validate_selection()
         restart()
 
     def set_item_value(item_id, path, value, label=None, quiet=False):
@@ -662,6 +813,21 @@ init -980 python in live_studio:
         restart()
         return value
 
+    def _item_contains_id(item, target_id):
+        if not item or not target_id:
+            return False
+        if item.get("id") == target_id:
+            return True
+        for child, _parent, _depth in walk_nodes(item.get("children", item.get("nodes", []))):
+            if child.get("id") == target_id:
+                return True
+        for event in item.get("events", []):
+            if event.get("id") == target_id:
+                return True
+            if any(choice.get("id") == target_id for choice in event.get("choices", [])):
+                return True
+        return False
+
     def remove_item(item_id, label="Remove item"):
         global selected_item_id, selected_item_kind, project_dirty
         if not item_id:
@@ -669,6 +835,11 @@ init -980 python in live_studio:
         frame = current_frame()
         if frame is None:
             return
+        state_before = resolve_frame()
+        removed_object, _removed_parent, _removed_kind = find_state_item(state_before, item_id)
+        if removed_object is None:
+            return
+        selection_is_removed = _item_contains_id(removed_object, selected_item_id)
         before = clone(frame.get("changes", {}))
         adds = frame.setdefault("changes", {}).setdefault("adds", [])
         removed_local_add = False
@@ -687,9 +858,11 @@ init -980 python in live_studio:
         invalidate_resolved_cache()
         project_dirty = True
         _record_frame_change(label, before, after)
-        if selected_item_id == item_id:
+        if selection_is_removed:
             selected_item_id = None
             selected_item_kind = None
+        runtime["drag"] = None
+        request_canvas_redraw()
         restart()
 
     def remove_selected_item():
@@ -797,10 +970,12 @@ init -980 python in live_studio:
         data.get("frames", {}).pop(frame_id, None)
         if frame_id in data.get("frame_order", []):
             data["frame_order"].remove(frame_id)
+        if "drop_runtime_preview_refs" in globals():
+            drop_runtime_preview_refs(frame_id)
         invalidate_resolved_cache()
 
     def add_frame(mode="inherit", name=None, stop_fallthrough=False):
-        global current_frame_id, project_dirty
+        global current_frame_id, project_dirty, preview_mode
         data = ensure_project()
         previous_id = current_frame_id
         previous = frame_by_id(previous_id)
@@ -832,7 +1007,14 @@ init -980 python in live_studio:
             "previous_stop_after": previous_stop_after,
         })
         current_frame_id = frame.get("id")
+        if mode == "detach" and "inherit_runtime_preview_refs" in globals():
+            inherit_runtime_preview_refs(frame.get("id"), previous_id)
+        if "activate_runtime_preview_refs" in globals():
+            activate_runtime_preview_refs(frame.get("id"))
+        preview_mode = "layout"
         project_dirty = True
+        runtime.pop("source_candidates", None)
+        runtime.pop("source_candidates_key", None)
         # Dialogue controllers are inherited. Creating a new event is left to
         # the user so a visual-only frame can be made without dialogue.
         restart()
@@ -843,7 +1025,7 @@ init -980 python in live_studio:
         return add_frame("detach", "{} Copy".format(frame.get("name", "Frame") if frame else "Frame"))
 
     def remove_current_frame():
-        global current_frame_id, selected_item_id, selected_item_kind, project_dirty
+        global current_frame_id, selected_item_id, selected_item_kind, project_dirty, preview_mode
         frame = current_frame()
         order = frame_order()
         if frame is None or len(order) <= 1:
@@ -859,8 +1041,11 @@ init -980 python in live_studio:
         }
         _remove_frame_internal(current_frame_id)
         current_frame_id = replacement
+        if "activate_runtime_preview_refs" in globals():
+            activate_runtime_preview_refs(replacement)
         selected_item_id = None
         selected_item_kind = None
+        preview_mode = "layout"
         _history_push(entry)
         project_dirty = True
         restart()
@@ -884,20 +1069,147 @@ init -980 python in live_studio:
         if index >= 0 and index + 1 < len(order):
             select_frame(order[index + 1])
 
+
+    def toggle_future_popup(force=None):
+        global future_popup_open, script_popup_open, project_popup_open, settings_popup_open, create_popup_open
+        opening = (not future_popup_open) if force is None else bool(force)
+        script_popup_open = False
+        project_popup_open = False
+        settings_popup_open = False
+        create_popup_open = False
+        future_popup_open = opening
+        restart()
+
     def set_tree_tab(value):
-        global selected_tree_tab
-        selected_tree_tab = str(value)
+        global selected_tree_tab, layer_panel_mode
+        value = "UI" if str(value).lower() == "ui" else "Scene"
+        if selected_tree_tab == value and layer_panel_mode == value:
+            return
+        selected_tree_tab = value
+        layer_panel_mode = value
+        request_canvas_redraw()
         restart()
 
     def set_bottom_tab(value):
         global bottom_tab
-        bottom_tab = str(value)
-        if bottom_tab == "Export":
-            try:
-                generate_exports()
-            except Exception as exc:
-                log_diagnostic("error", "Code preview generation failed", repr(exc))
+        value = str(value)
+        if value == "Export":
+            open_script_popup()
+            return
+        bottom_tab = value if value in ("Assets", "Dialogue") else "Assets"
         restart()
+
+    def close_all_popups(restart_ui=True):
+        global script_popup_open, project_popup_open, settings_popup_open, create_popup_open, future_popup_open
+        changed = bool(script_popup_open or project_popup_open or settings_popup_open or create_popup_open or future_popup_open)
+        script_popup_open = False
+        project_popup_open = False
+        settings_popup_open = False
+        create_popup_open = False
+        future_popup_open = False
+        if changed and restart_ui:
+            restart()
+        return changed
+
+    def popup_is_open():
+        return bool(script_popup_open or project_popup_open or settings_popup_open or create_popup_open or future_popup_open)
+
+    def open_script_popup():
+        global script_popup_open, project_popup_open, settings_popup_open, create_popup_open, future_popup_open
+        flush_pending_input_edits()
+        try:
+            generate_exports()
+        except Exception as exc:
+            log_diagnostic("error", "Code preview generation failed", repr(exc))
+        project_popup_open = False
+        settings_popup_open = False
+        create_popup_open = False
+        future_popup_open = False
+        if script_popup_open:
+            return
+        script_popup_open = True
+        restart()
+
+    def close_script_popup():
+        global script_popup_open
+        if not script_popup_open:
+            return
+        script_popup_open = False
+        restart()
+
+    def toggle_project_popup():
+        global project_popup_open, script_popup_open, settings_popup_open, create_popup_open, future_popup_open
+        opening = not project_popup_open
+        script_popup_open = False
+        settings_popup_open = False
+        create_popup_open = False
+        future_popup_open = False
+        project_popup_open = opening
+        restart()
+
+    def toggle_settings_popup():
+        global settings_popup_open, script_popup_open, project_popup_open, create_popup_open, future_popup_open
+        opening = not settings_popup_open
+        script_popup_open = False
+        project_popup_open = False
+        create_popup_open = False
+        future_popup_open = False
+        settings_popup_open = opening
+        restart()
+
+    def toggle_create_popup():
+        global create_popup_open, script_popup_open, project_popup_open, settings_popup_open, future_popup_open
+        opening = not create_popup_open
+        script_popup_open = False
+        project_popup_open = False
+        settings_popup_open = False
+        future_popup_open = False
+        create_popup_open = opening
+        restart()
+
+    def new_blank_project_from_ui():
+        close_all_popups(restart_ui=False)
+        begin_blank_project("Untitled Live Studio Project")
+
+    def new_capture_project_from_ui():
+        close_all_popups(restart_ui=False)
+        source = clone(runtime.get("capture_source") or capture_source_reference())
+        begin_capture_project("Captured Ren'Py Project", source, keep_snapshot=True)
+        restart()
+
+    def save_project_from_ui():
+        save_project()
+        close_all_popups()
+
+    def load_project_from_ui(path):
+        if isinstance(path, (tuple, list)) and len(path) > 1:
+            path = path[1]
+        if load_project(path):
+            close_all_popups()
+
+    def set_script_export_section(value):
+        global script_export_section
+        value = str(value or "story")
+        if value not in ("story", "screens", "helpers"):
+            value = "story"
+        if script_export_section == value:
+            return
+        script_export_section = value
+        restart()
+
+    def request_full_preview():
+        # The dedicated whole-scene preview runner is intentionally not wired
+        # yet. Most importantly, this button must not toggle the editor between
+        # exact capture and editable layout modes.
+        try:
+            renpy.notify("Full scene preview is not implemented yet")
+        except Exception:
+            pass
+
+    def consume_event():
+        # Used by modal overlays to prevent otherwise-unhandled clicks from
+        # falling through into controls underneath the overlay.
+        raise renpy.IgnoreEvent()
 
     def set_preview_mode(value):
         global preview_mode
@@ -909,28 +1221,74 @@ init -980 python in live_studio:
         tool_mode = str(value)
         restart()
 
+    def set_workspace_mode(value):
+        global workspace_mode, bottom_tab
+        value = str(value or "Default")
+        if value not in ("Default", "Scene", "UI", "Dialogue"):
+            value = "Default"
+        if workspace_mode == value:
+            return
+        workspace_mode = value
+        if value == "Scene":
+            set_tree_tab("Scene")
+            return
+        if value == "UI":
+            set_tree_tab("UI")
+            return
+        if value == "Dialogue":
+            bottom_tab = "Dialogue"
+        restart()
+
+    def cycle_workspace_mode():
+        values = ("Default", "Scene", "UI", "Dialogue")
+        try:
+            index = values.index(workspace_mode)
+        except ValueError:
+            index = 0
+        set_workspace_mode(values[(index + 1) % len(values)])
+
+    def set_asset_view_mode(value):
+        global asset_view_mode
+        value = "list" if str(value).lower() == "list" else "grid"
+        if asset_view_mode == value:
+            return
+        asset_view_mode = value
+        restart()
+
     def set_right_panel_tab(value):
         global right_panel_tab
         value = str(value or "Layers")
-        if value not in ("Layers", "Structure", "History", "Debug"):
+        if value in ("Structure", "Inspector", "Debug"):
+            value = "Debugger"
+        if value not in ("Layers", "History", "Debugger"):
             value = "Layers"
+        if right_panel_tab == value:
+            return
         right_panel_tab = value
         restart()
 
     def set_layer_panel_mode(value):
-        global layer_panel_mode
-        value = str(value or "Scene").title()
-        if value not in ("Scene", "UI"):
-            value = "Scene"
+        global layer_panel_mode, selected_tree_tab
+        # str.title() turns "UI" into "Ui", which made the UI layer button
+        # immediately fall back to Scene mode. Normalize the domain explicitly.
+        value = "UI" if str(value or "Scene").lower() == "ui" else "Scene"
+        if layer_panel_mode == value and selected_tree_tab == value:
+            return
         layer_panel_mode = value
+        selected_tree_tab = value
+        request_canvas_redraw()
         restart()
 
     def select_layer_item(item_id, kind):
         global selected_tree_tab, layer_panel_mode
         is_ui = str(kind).startswith("ui")
-        selected_tree_tab = "UI" if is_ui else "Scene"
-        layer_panel_mode = selected_tree_tab
-        select_item(item_id, kind)
+        wanted = "UI" if is_ui else "Scene"
+        tab_changed = selected_tree_tab != wanted or layer_panel_mode != wanted
+        selected_tree_tab = wanted
+        layer_panel_mode = wanted
+        selection_changed = select_item_live(item_id, kind)
+        if tab_changed or selection_changed:
+            restart()
 
     def set_canvas_zoom(value):
         global canvas_zoom
@@ -1031,7 +1389,180 @@ init -980 python in live_studio:
             if children and open_value:
                 _append_visible_node_rows(rows, children, node.get("id"), depth + 1, kind)
 
+
+    def _debug_node_count(nodes):
+        return sum(1 for _node, _parent, _depth in walk_nodes(nodes or []))
+
+    def _debug_parent_chain(state, item_id):
+        chain = []
+        visited = set()
+        current = item_id
+        while current and current not in visited:
+            visited.add(current)
+            item, parent_id, kind = find_state_item(state, current)
+            if item is None:
+                break
+            chain.append({"id": item.get("id"), "name": item.get("name"), "kind": kind, "parent_id": parent_id})
+            current = parent_id
+        return chain
+
+    def _debug_selected_payload(state):
+        item, parent_id, kind = selected_item(state)
+        if item is None:
+            return {"id": selected_item_id, "kind": selected_item_kind, "status": "none"}
+        screen = screen_for_node(state, item.get("id")) if kind == "ui_node" and "screen_for_node" in globals() else None
+        frame = current_frame() or {}
+        local_sets = frame.get("changes", {}).get("sets", {}).get(item.get("id"), {})
+        runtime_displayable = None
+        if kind == "ui_node":
+            runtime_displayable = runtime.get("widget_displayables", {}).get(item.get("id"))
+        elif kind == "scene_node":
+            runtime_displayable = runtime.get("scene_displayables", {}).get(item.get("id"))
+        try:
+            effective_bounds = item_stage_bounds(item, canvas_bounds_map(state)) if kind in ("ui_node", "scene_node") and "canvas_bounds_map" in globals() else item.get("bounds")
+        except Exception:
+            effective_bounds = item.get("bounds")
+        return {
+            "id": item.get("id"), "kind": kind, "name": item.get("name"),
+            "parent_id": parent_id, "parent_chain": _debug_parent_chain(state, item.get("id")),
+            "type": item.get("type"), "widget_id": item.get("widget_id"),
+            "editability": item.get("editability"), "selectable": item.get("selectable"),
+            "locked": item.get("locked"), "screen_locked": (screen or {}).get("locked"),
+            "screen": (screen or {}).get("name"), "screen_id": (screen or {}).get("id"),
+            "screen_managed": (screen or {}).get("managed"),
+            "screen_runtime_active": runtime_screen_is_active(screen) if screen and "runtime_screen_is_active" in globals() else None,
+            "bounds": item.get("bounds"), "effective_bounds": effective_bounds,
+            "properties": item.get("properties"), "captured_properties": item.get("captured_properties"),
+            "resolved_properties": item.get("resolved_properties"), "local_overrides": local_sets,
+            "source": item.get("source"),
+            "runtime_displayable_type": runtime_displayable.__class__.__name__ if runtime_displayable is not None else None,
+        }
+
+    def build_debug_report():
+        """Returns a clipboard-safe diagnostic snapshot for bug reports."""
+        try:
+            state = resolve_frame()
+        except Exception as exc:
+            state = empty_frame_state()
+            log_diagnostic("error", "Debugger could not resolve current frame", repr(exc))
+        frame = current_frame() or {}
+        filter_info = clone(runtime.get("last_ui_capture_filter", {}))
+        event = None
+        try:
+            event = _active_preview_event(state) if "_active_preview_event" in globals() else None
+        except Exception:
+            event = None
+        screens = []
+        for screen in state.get("ui_screens", []):
+            try:
+                active = screen_visible_in_canvas(screen, state, event) if "screen_visible_in_canvas" in globals() else bool(screen.get("visible", True))
+            except Exception:
+                active = False
+            screen_id = screen.get("id")
+            screen_entry = runtime.get("screen_index", {}).get(screen_runtime_key(screen)) if "screen_runtime_key" in globals() else None
+            screens.append({
+                "id": screen_id, "name": screen.get("name"), "tag": screen.get("tag"),
+                "layer": screen.get("layer"), "role": screen.get("role"), "active_in_canvas": active,
+                "runtime_active": runtime_screen_is_active(screen) if "runtime_screen_is_active" in globals() else None,
+                "visible": screen.get("visible"), "locked": screen.get("locked"), "managed": screen.get("managed"),
+                "editability": screen.get("editability"), "nodes": _debug_node_count(screen.get("nodes", [])),
+                "root_flattened": (screen.get("source") or {}).get("root_flattened", False),
+                "has_runtime_screen": screen_id in runtime.get("screen_displayables", {}),
+                "has_frozen_root": screen_id in runtime.get("screen_frozen_roots", {}),
+                "runtime_entry_frozen": (screen_entry or {}).get("frozen"),
+                "source": screen.get("source"),
+            })
+        payload = {
+            "tool": {"name": TOOL_NAME, "release": globals().get("RELEASE_VERSION", str(VERSION)), "model_version": VERSION},
+            "renpy": {"version": getattr(renpy, "version_string", None), "screen": [config.screen_width, config.screen_height]},
+            "project": {"name": project_name(), "dirty": project_dirty, "frame_count": len(ensure_project().get("frames", {}))},
+            "editor": {
+                "current_frame_id": current_frame_id, "frame_name": frame.get("name"),
+                "source_ref": frame.get("source_ref") or state.get("source_ref"),
+                "tree_tab": selected_tree_tab, "layer_mode": layer_panel_mode,
+                "right_tab": right_panel_tab, "preview_mode": preview_mode, "tool_mode": tool_mode,
+                "state_revision": runtime.get("state_revision"), "drag_revision": runtime.get("drag_revision"),
+                "last_invalidation_reason": runtime.get("last_invalidation_reason"),
+                "pending_inputs": len(runtime.get("pending_input_edits", {})),
+                "active_preview_frame_id": runtime.get("active_preview_frame_id"),
+                "active_preview_source_frame_id": runtime.get("active_preview_source_frame_id"),
+                "drag": runtime.get("drag"),
+            },
+            "selection": _debug_selected_payload(state),
+            "counts": {
+                "scenes": len(state.get("scenes", [])),
+                "scene_nodes": sum(_debug_node_count(scene.get("nodes", [])) for scene in state.get("scenes", [])),
+                "ui_screens": len(state.get("ui_screens", [])),
+                "ui_nodes": sum(_debug_node_count(screen.get("nodes", [])) for screen in state.get("ui_screens", [])),
+                "dialogue_controllers": len(state.get("dialogue_controllers", [])),
+                "resolved_cache": len(resolved_cache),
+                "canvas_cache": len(runtime.get("canvas_cache", {})),
+                "bounds_cache": len(runtime.get("bounds_cache", {})),
+                "screen_preview_cache": len(runtime.get("captured_screen_preview_cache", {})),
+                "frame_preview_bundles": len(runtime.get("frame_preview_refs", {})),
+            },
+            "capabilities": {
+                "screen_displayable": bool(globals().get("ScreenDisplayable")),
+                "get_displayable_properties": hasattr(renpy, "get_displayable_properties"),
+                "screenshot_to_bytes": hasattr(renpy, "screenshot_to_bytes"),
+                # Report the adapter's presence without calling it while the
+                # debugger screen is evaluating. A failed internal API lookup
+                # must not make the Debugger itself disappear.
+                "scene_lists_adapter": callable(globals().get("scene_lists")),
+                "script_lookup": bool(getattr(getattr(renpy, "game", None), "script", None)),
+            },
+            "capture": {
+                "serial": runtime.get("capture_serial"), "started_at": runtime.get("capture_started_at"),
+                "source": runtime.get("capture_source"), "filter": filter_info,
+                "active_screen_ids": sorted(str(value) for value in runtime.get("active_screen_ids", set())),
+                "active_screen_names": list(runtime.get("active_screen_names", [])),
+                "runtime_screen_keys": [list(key) for key in runtime.get("screen_index", {}).keys()],
+                "modeled_runtime_screen_ids": [screen.get("id") for screen in state.get("ui_screens", []) if not screen.get("managed")],
+                "modeled_but_inactive_ids": [screen.get("id") for screen in state.get("ui_screens", []) if not screen.get("managed") and screen.get("id") not in set(runtime.get("active_screen_ids", set()) or set())],
+                "runtime_ids_missing_from_model": [screen_id for screen_id in runtime.get("active_screen_ids", set()) if not any(screen.get("id") == screen_id for screen in state.get("ui_screens", []))],
+                "passive_dialogue_presentations": [
+                    {"name": item.get("name"), "tag": item.get("tag"), "layer": item.get("layer"), "zorder": item.get("zorder")}
+                    for item in runtime.get("dialogue_presentation_roots", [])
+                ],
+            },
+            "ui_screens": screens,
+            "frame_changes": frame.get("changes", {}),
+            "active_dialogue_event": event,
+            "diagnostics": clone(runtime.get("diagnostics", [])[-100:]),
+        }
+        return "Ren'Py Live Studio Debug Report\n" + json.dumps(json_safe(payload), indent=2, sort_keys=True, ensure_ascii=False)
+
+    def debug_report_preview(limit=12000):
+        key = (
+            int(runtime.get("state_revision", 0)), selected_item_id, selected_item_kind,
+            len(runtime.get("diagnostics", [])), right_panel_tab,
+        )
+        cached = runtime.get("debug_report_preview_cache")
+        if not cached or cached.get("key") != key:
+            report = build_debug_report()
+            value = report if len(report) <= int(limit) else report[:int(limit)] + "\n... [preview truncated; Copy Full Report includes everything]"
+            cached = {"key": key, "value": value}
+            runtime["debug_report_preview_cache"] = cached
+        return cached.get("value", "")
+
+    def copy_debug_report():
+        flush_pending_input_edits(False)
+        report = build_debug_report()
+        copied = copy_text_to_clipboard(report) if "copy_text_to_clipboard" in globals() else False
+        if copied:
+            renpy.notify("Live Studio debug report copied.")
+            log_diagnostic("info", "Debug report copied", {"characters": len(report)})
+        else:
+            renpy.notify("Could not copy the debug report. See renpy.log.")
+            try:
+                renpy.log(report)
+            except Exception:
+                pass
+        restart()
+        return copied
+
     def visible_scene_tree_rows(state=None):
+        """Visual Scene hierarchy only. Dialogue controllers live in Dialogue."""
         state = state or resolve_frame()
         rows = []
         for scene in state.get("scenes", []):
@@ -1041,21 +1572,11 @@ init -980 python in live_studio:
                 "parent_id": None,
                 "depth": 0,
                 "kind": "scene",
-                "has_children": bool(scene.get("nodes")) or any(c.get("scene_id") == scene.get("id") for c in state.get("dialogue_controllers", [])),
+                "has_children": bool(scene.get("nodes")),
                 "open": scene_open,
             })
             if scene_open:
                 _append_visible_node_rows(rows, scene.get("nodes", []), scene.get("id"), 1, "scene_node")
-                for controller in state.get("dialogue_controllers", []):
-                    if controller.get("scene_id") == scene.get("id"):
-                        rows.append({
-                            "item": controller,
-                            "parent_id": scene.get("id"),
-                            "depth": 1,
-                            "kind": "dialogue_controller",
-                            "has_children": False,
-                            "open": False,
-                        })
         return rows
 
     def _ui_container_has_selected(screen):
@@ -1065,10 +1586,20 @@ init -980 python in live_studio:
             return True
         return any(node.get("id") == selected_item_id for node, _parent, _depth in walk_nodes(screen.get("nodes", [])))
 
+    def _runtime_screen_listed(screen):
+        if "runtime_screen_is_active" not in globals():
+            return True
+        try:
+            return runtime_screen_is_active(screen)
+        except Exception:
+            return True
+
     def visible_ui_tree_rows(state=None):
         state = state or resolve_frame()
         rows = []
         for screen in state.get("ui_screens", []):
+            if not _runtime_screen_listed(screen):
+                continue
             screen_open = tree_item_is_open(screen.get("id"), _ui_container_has_selected(screen))
             rows.append({
                 "item": screen,
@@ -1105,25 +1636,25 @@ init -980 python in live_studio:
                 _layer_node_rows(rows, children, node.get("id"), depth + 1, kind, screen_id)
 
     def scene_layer_rows(state=None):
+        """Scene displayables only; dialogue is behavior, not a layer."""
         state = state or resolve_frame()
         rows = []
         for scene in reversed(state.get("scenes", [])):
-            if not scene.get("nodes") and not any(c.get("scene_id") == scene.get("id") for c in state.get("dialogue_controllers", [])):
+            if not scene.get("nodes"):
                 continue
             open_key = "layer:" + str(scene.get("id"))
             open_value = tree_item_is_open(open_key, True)
             rows.append({"kind": "scene", "item": scene, "depth": 0, "group": True, "has_children": True, "open": open_value, "open_key": open_key})
             if open_value:
                 _layer_node_rows(rows, scene.get("nodes", []), scene.get("id"), 1, "scene_node")
-                for controller in reversed(state.get("dialogue_controllers", [])):
-                    if controller.get("scene_id") == scene.get("id"):
-                        rows.append({"kind": "dialogue_controller", "item": controller, "parent_id": scene.get("id"), "depth": 1, "group": False, "has_children": False, "open": False})
         return rows
 
     def ui_layer_rows(state=None):
         state = state or resolve_frame()
         rows = []
         for screen in reversed(state.get("ui_screens", [])):
+            if not _runtime_screen_listed(screen):
+                continue
             open_key = "layer:" + str(screen.get("id"))
             open_value = tree_item_is_open(open_key, _ui_container_has_selected(screen))
             rows.append({"kind": "ui_screen", "item": screen, "depth": 0, "group": True, "has_children": bool(screen.get("nodes")), "screen_id": screen.get("id"), "open": open_value, "open_key": open_key})
@@ -1194,6 +1725,8 @@ init -980 python in live_studio:
         for controller in state.get("dialogue_controllers", []) or []:
             if not isinstance(controller, dict):
                 continue
+            # Dialogue is frame logic and is no longer parented to a visual Scene.
+            controller["scene_id"] = None
             if "frame_event_ids" not in controller:
                 active_id = controller.get("active_event_id")
                 controller["frame_event_ids"] = [active_id] if active_id else []
@@ -1204,6 +1737,7 @@ init -980 python in live_studio:
         for node in nodes or []:
             if not isinstance(node, dict):
                 continue
+            node.setdefault("captured_properties", clone(node.get("properties", {})))
             node.setdefault("binding", {"mode": "literal", "expression": "", "source_expression": "", "preview": str(node.get("properties", {}).get("text", "") or "")})
             binding = node.get("binding")
             if not isinstance(binding, dict):
@@ -1231,6 +1765,8 @@ init -980 python in live_studio:
         data["settings"].setdefault("grid_size", GRID_SIZE)
         data["settings"].setdefault("guides_enabled", GUIDES_ENABLED)
         data["settings"].setdefault("show_all_bounds", SHOW_ALL_BOUNDS)
+        data["settings"].setdefault("ui_capture_filter_engine_screens", UI_CAPTURE_FILTER_ENGINE_SCREENS)
+        data["settings"].setdefault("ui_capture_include_dialogue_screens", UI_CAPTURE_DIALOGUE_SCREENS)
         data["settings"].setdefault("asset_browser_mode", "tree")
         data["settings"].setdefault("layer_panel_mode", "Scene")
         # Version 3 stored the noisy grid/all-widget overlay as the normal
@@ -1245,9 +1781,33 @@ init -980 python in live_studio:
             root_state = frame.get("root_state")
             _migrate_dialogue_state(root_state)
             if isinstance(root_state, dict):
-                root_state["scenes"] = [scene for scene in root_state.get("scenes", []) if scene.get("nodes") or str(scene.get("name", "")) not in ("Layer: transient", "Layer: screens", "Layer: overlay", "Layer: top")]
+                migrated_scenes = []
+                for scene in root_state.get("scenes", []) or []:
+                    if not scene.get("nodes") and str(scene.get("name", "")) in ("Layer: transient", "Layer: screens", "Layer: overlay", "Layer: top", "Dialogue"):
+                        continue
+                    if str(scene.get("type") or "").lower() == "dialogue" or str(scene.get("name") or "").lower() in ("dialogue", "dialogue visuals"):
+                        # Dialogue is frame behavior, never a visual Scene layer.
+                        # Older builds accidentally captured say/dialogue widgets
+                        # here; the dedicated dialogue controller retains logic.
+                        continue
+                    migrated_scenes.append(scene)
+                root_state["scenes"] = migrated_scenes
+                migrated_screens = []
                 for screen in root_state.get("ui_screens", []) or []:
                     _migrate_ui_nodes(screen.get("nodes", []))
+                    nodes = screen.get("nodes", []) or []
+                    if len(nodes) == 1 and "_captured_root_is_structural" in globals() and _captured_root_is_structural(nodes[0], screen.get("name")):
+                        screen["nodes"] = nodes[0].get("children", [])
+                        screen.setdefault("source", {})["root_flattened"] = True
+                    name = str(screen.get("name") or "").lower()
+                    runtime_observed = screen.get("source", {}).get("captured_by") == "runtime"
+                    if runtime_observed and (name.startswith("live_studio") or name in UI_CAPTURE_EXCLUDED_SCREEN_NAMES or any(pattern in name for pattern in globals().get("UI_CAPTURE_EXCLUDED_SCREEN_PATTERNS", ()) if pattern)):
+                        continue
+                    if runtime_observed and str(screen.get("role") or "").lower() in ("say", "choice") and not bool(data.get("settings", {}).get("ui_capture_include_dialogue_screens", UI_CAPTURE_DIALOGUE_SCREENS)):
+                        continue
+                    if screen.get("nodes"):
+                        migrated_screens.append(screen)
+                root_state["ui_screens"] = migrated_screens
             changes = frame.setdefault("changes", {})
             changes.setdefault("sets", {})
             adds = changes.setdefault("adds", [])
@@ -1257,6 +1817,10 @@ init -980 python in live_studio:
             for operation in adds:
                 value = operation.get("value") if isinstance(operation, dict) else None
                 if isinstance(value, dict) and operation.get("root_collection") == "scenes":
+                    scene_name = str(value.get("name", "")).lower()
+                    scene_type = str(value.get("type", "")).lower()
+                    if scene_type == "dialogue" or scene_name in ("dialogue", "dialogue visuals"):
+                        continue
                     if not value.get("nodes") and str(value.get("name", "")) in ("Layer: transient", "Layer: screens", "Layer: overlay", "Layer: top"):
                         continue
                 if isinstance(value, dict) and value.get("events") is not None:
@@ -1270,6 +1834,14 @@ init -980 python in live_studio:
         data["version"] = VERSION
         return data
 
+
+    def project_file_label(path):
+        try:
+            if isinstance(path, (tuple, list)) and path:
+                return str(path[0])
+            return os.path.basename(str(path or "")) or "Project"
+        except Exception:
+            return "Project"
 
     def saved_project_paths():
         directory, _path = _project_path()
@@ -1295,6 +1867,9 @@ init -980 python in live_studio:
             selected_item_kind = None
             history[:] = []
             redo_stack[:] = []
+            runtime["frame_preview_refs"] = {}
+            if "activate_runtime_preview_refs" in globals():
+                activate_runtime_preview_refs(current_frame_id)
             invalidate_resolved_cache()
             project_dirty = False
             renpy.notify("Live Studio project loaded")

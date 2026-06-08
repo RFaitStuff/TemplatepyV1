@@ -1,16 +1,15 @@
-﻿# =============================================================================
-# Quest Manager
+# =============================================================================
+# Quest runtime
 # -----------------------------------------------------------------------------
-# Quests are organized in a tree:
-#     main / side / character_<id> / misc
-# Each quest's objectives can be flag-driven: when you call `set_flag("X")`,
-# any objective listening for "X" auto-completes; when all required objectives
-# are done, the quest auto-completes.
-#
-# So your story code just sets flags - the manager handles the rest.
+# Quest definitions live in init-time `quest_defs` and save progress lives in
+# `quest_states`. `quest_log` is rebuilt as a compatibility view for existing
+# HUD/debug screens.
 # =============================================================================
 
 init -5 python:
+
+    quest_defs = {}
+    quest_log = {}
 
     def _emit_quest_event(event_name, *args):
         try:
@@ -19,15 +18,37 @@ init -5 python:
             pass
 
     class Objective(object):
-        def __init__(self, oid, text, flag=None, optional=False, target=None):
+        def __init__(self, oid, text, flag=None, optional=False, target=None, done=False, qid=None):
+            self.qid = qid
             self.id = oid
             self.text = text
-            self.flag = flag        # if set, completes when this story flag is set
+            self.flag = flag
             self.optional = optional
-            self.done = False
-            # Optional spatial target hint - e.g. {"npc": "alice", "location": "art_room"}.
-            # Read by Engine/Quest_Guide.rpy to draw automatic markers.
             self.target = target or None
+            self._done = bool(done)
+            if done and qid:
+                done_ids = set(_quest_state(qid).get("done", []))
+                done_ids.add(oid)
+                _quest_state(qid)["done"] = sorted(done_ids)
+
+        @property
+        def done(self):
+            if self.qid:
+                return self.id in set(_quest_state(self.qid).get("done", []))
+            return self._done
+
+        @done.setter
+        def done(self, value):
+            self._done = bool(value)
+            if not self.qid:
+                return
+            state = _quest_state(self.qid)
+            done_ids = set(state.get("done", []))
+            if value:
+                done_ids.add(self.id)
+            else:
+                done_ids.discard(self.id)
+            state["done"] = sorted(done_ids)
 
     class Quest(object):
         def __init__(
@@ -46,35 +67,62 @@ init -5 python:
             self.id = qid
             self.title = title
             self.description = description
-            self.category = category          # "main" | "side" | "misc" | "character_<id>"
-            self.character = character        # optional character id
-            self.start_flag = start_flag      # auto-start when this flag is set
-            self.complete_flag = complete_flag  # auto-complete when set
-            self.fail_flag = fail_flag        # auto-fail when set
-            self.target = target              # quest-level guide hint
-            self.state = "inactive"
+            self.category = category
+            self.character = character
+            self.start_flag = start_flag
+            self.complete_flag = complete_flag
+            self.fail_flag = fail_flag
+            self.target = target
             self.objectives = []
+
+            state = _quest_state(qid)
+            done_ids = set(state.get("done", []))
             for o in (objectives or []):
                 if isinstance(o, Objective):
-                    self.objectives.append(o)
+                    objective = Objective(o.id, o.text, o.flag, o.optional, o.target, o.id in done_ids or o.done, qid=qid)
                 elif isinstance(o, dict):
-                    self.objectives.append(Objective(**o))
+                    data = dict(o)
+                    oid = data.get("oid") or data.get("id")
+                    data["oid"] = oid
+                    data.pop("id", None)
+                    data["qid"] = qid
+                    objective = Objective(**data)
+                    objective.done = objective.id in done_ids
                 elif isinstance(o, tuple):
-                    self.objectives.append(Objective(*o))
+                    objective = Objective(*o, qid=qid)
+                    objective.done = objective.id in done_ids
                 else:
-                    self.objectives.append(Objective(str(o), str(o)))
+                    objective = Objective(str(o), str(o), done=str(o) in done_ids, qid=qid)
+                self.objectives.append(objective)
+
+        @property
+        def state(self):
+            return _quest_state(self.id).get("state", "inactive")
+
+        @state.setter
+        def state(self, value):
+            _quest_state(self.id)["state"] = value
+
+        def _persist_done(self):
+            _quest_state(self.id)["done"] = sorted(o.id for o in self.objectives if o.done)
 
         def start(self):
+            if not system_enabled("quests"):
+                return None
             if self.state == "inactive":
                 self.state = "active"
                 _emit_quest_event("quest_started", self.id)
 
         def complete(self):
+            if not system_enabled("quests"):
+                return None
             if self.state != "completed":
                 self.state = "completed"
                 _emit_quest_event("quest_completed", self.id)
 
         def fail(self):
+            if not system_enabled("quests"):
+                return None
             if self.state != "failed":
                 self.state = "failed"
                 _emit_quest_event("quest_failed", self.id)
@@ -86,9 +134,12 @@ init -5 python:
             return None
 
         def progress(self, oid):
+            if not system_enabled("quests"):
+                return None
             o = self.get(oid)
             if o and not o.done:
                 o.done = True
+                self._persist_done()
                 _emit_quest_event("quest_progress", self.id, oid)
             if self.state == "active" and self.all_required_done():
                 self.complete()
@@ -97,24 +148,50 @@ init -5 python:
             return all(o.done for o in self.objectives if not o.optional)
 
         @property
-        def is_active(self):    return self.state == "active"
+        def is_active(self):
+            return self.state == "active"
+
         @property
-        def is_completed(self): return self.state == "completed"
+        def is_completed(self):
+            return self.state == "completed"
+
         @property
-        def is_failed(self):    return self.state == "failed"
+        def is_failed(self):
+            return self.state == "failed"
 
 
-# Master quest registry: qid -> Quest
-default quest_log = {}
+default quest_states = {}
 default tracked_quest_id = None
 
 
 init python:
 
+    def _quest_state(qid):
+        state = quest_states.setdefault(qid, {})
+        state.setdefault("state", "inactive")
+        state.setdefault("done", [])
+        return state
+
+    def _make_quest_from_def(qid):
+        data = dict(quest_defs.get(qid, {}))
+        if not data:
+            return None
+        return Quest(qid, **data)
+
+    def rebuild_quest_log():
+        quest_log.clear()
+        for qid in sorted(quest_defs.keys()):
+            quest_log[qid] = _make_quest_from_def(qid)
+        return quest_log
+
+    if rebuild_quest_log not in config.after_load_callbacks:
+        config.after_load_callbacks.append(rebuild_quest_log)
+
     def define_quest(qid, **kwargs):
-        """Register a quest. Safe to call multiple times - won't overwrite state."""
-        if qid not in quest_log:
-            quest_log[qid] = Quest(qid, **kwargs)
+        """Register immutable quest data and rebuild the runtime compatibility view."""
+        quest_defs[qid] = dict(kwargs)
+        _quest_state(qid)
+        quest_log[qid] = _make_quest_from_def(qid)
         return quest_log[qid]
 
     def main_quest(qid, **kwargs):
@@ -130,27 +207,36 @@ init python:
         kwargs.setdefault("character", character)
         return define_quest(qid, **kwargs)
 
+    def quest(qid):
+        return quest_log.get(qid) or _make_quest_from_def(qid)
+
     def start_quest(qid):
-        if qid in quest_log:
-            quest_log[qid].start()
+        q = quest(qid)
+        if q:
+            q.start()
 
     def progress_quest(qid, oid):
-        if qid in quest_log:
-            quest_log[qid].progress(oid)
+        q = quest(qid)
+        if q:
+            q.progress(oid)
 
     def complete_quest(qid):
-        if qid in quest_log:
-            quest_log[qid].complete()
+        q = quest(qid)
+        if q:
+            q.complete()
 
     def fail_quest(qid):
-        if qid in quest_log:
-            quest_log[qid].fail()
+        q = quest(qid)
+        if q:
+            q.fail()
 
     def is_quest_active(qid):
-        return qid in quest_log and quest_log[qid].is_active
+        q = quest(qid)
+        return bool(q and q.is_active)
 
     def is_quest_completed(qid):
-        return qid in quest_log and quest_log[qid].is_completed
+        q = quest(qid)
+        return bool(q and q.is_completed)
 
     def quests_in(category):
         return [q for q in quest_log.values() if q.category == category]
@@ -159,6 +245,8 @@ init python:
         return [q for q in quest_log.values() if q.character == character]
 
     def active_quests():
+        if not system_enabled("quests"):
+            return []
         return [q for q in quest_log.values() if q.is_active]
 
     def tracked_quest():
@@ -175,18 +263,12 @@ init python:
         return None
 
     def set_tracked_quest(qid):
-        # NOTE: returns None on purpose. Returning True/False would close any
-        # `call screen ...` running underneath (action results propagate to
-        # the current interaction), which used to teleport the player by
-        # falling through to nav_left when the quest log was opened on top of
-        # the explore loop.
         global tracked_quest_id
         if qid in quest_log and quest_log[qid].is_active:
             tracked_quest_id = qid
         return None
 
     def toggle_tracked_quest(qid):
-        # Click-to-track helper: if already tracked, untrack; else track.
         global tracked_quest_id
         if tracked_quest_id == qid:
             tracked_quest_id = None
@@ -212,13 +294,14 @@ init python:
         return [q for q in quest_log.values() if q.is_completed]
 
     def quest_tree():
-        """Return {category: [quest, ...]} for UI display."""
         tree = {}
         for q in quest_log.values():
             tree.setdefault(q.category, []).append(q)
         return tree
 
     def _quests_on_flag(flag):
+        if not system_enabled("quests"):
+            return None
         for q in quest_log.values():
             if q.start_flag == flag:
                 q.start()
@@ -231,5 +314,3 @@ init python:
                 q.complete()
             if q.complete_flag == flag:
                 q.complete()
-
-

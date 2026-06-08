@@ -10,7 +10,7 @@ init -850 python in live_studio:
 
     def canvas_items(state=None, selectable_only=True):
         state = state or resolve_frame()
-        cache_key = (id(state), bool(selectable_only), int(runtime.get("state_revision", 0)))
+        cache_key = (id(state), bool(selectable_only), int(runtime.get("state_revision", 0)), str(layer_panel_mode))
         item_cache = runtime.setdefault("canvas_item_cache", {})
         if cache_key in item_cache:
             return item_cache[cache_key]
@@ -25,8 +25,9 @@ init -850 python in live_studio:
                 if node.get("visible", True) and (not selectable_only or node.get("selectable", True)):
                     result.append((scene_index * 100000 + int(node.get("zorder", order) or order), depth, node, "scene_node"))
                 order += 1
+        event = _active_preview_event(state)
         for screen_index, screen in enumerate(state.get("ui_screens", [])):
-            if not screen.get("visible", True):
+            if not screen_visible_in_canvas(screen, state, event):
                 continue
             for node, _parent_id, depth in walk_nodes(screen.get("nodes", [])):
                 if node.get("internal"):
@@ -135,27 +136,44 @@ init -850 python in live_studio:
             return True
         return any(node.get("id") == item_id for node, _parent, _depth in walk_nodes(screen.get("nodes", [])))
 
+    def runtime_screen_is_active(screen):
+        if not screen or screen.get("managed"):
+            return True
+        source = screen.get("source") or {}
+        if source.get("provenance") != "runtime_observed" and source.get("captured_by") != "runtime":
+            return True
+        # Runtime-observed screens are meaningful only while their capture
+        # bundle is active. A loaded project has no live ScreenDisplayable tree;
+        # showing its stale model would resurrect notifications, debug overlays,
+        # and other screens that are not currently on-screen.
+        if runtime.get("active_preview_source_frame_id") is None:
+            return False
+        return screen.get("id") in set(runtime.get("active_screen_ids", set()) or set())
+
     def screen_visible_in_canvas(screen, state=None, event=None):
         if not screen or not screen.get("visible", True):
+            return False
+        if not runtime_screen_is_active(screen):
             return False
         role = str(screen.get("role") or "screen").lower()
         if role not in ("say", "choice"):
             return True
-        if _screen_contains_item(screen, selected_item_id):
-            return True
+        # Selecting an item must never summon an otherwise inactive say or
+        # choice screen. Visibility follows the represented frame/event only.
         event = event or _active_preview_event(state or resolve_frame())
         if role == "say":
             return bool(event and (event.get("type") in ("say", "narration") or (event.get("type") == "choice" and event.get("text"))))
         return bool(event and event.get("type") == "choice")
 
     def _layout_managed_node(node, parent_rect, result, parent_type="fixed", forced_x=None, forced_y=None):
-        rect = _managed_rect(node, parent_rect, forced_x, forced_y)
+        current = effective_item(node)
+        rect = _managed_rect(current, parent_rect, forced_x, forced_y)
         result[node.get("id")] = rect
-        children = node.get("children", [])
+        children = current.get("children", [])
         if not children:
             return rect
 
-        props = node.get("properties", {})
+        props = current.get("properties", {})
         left, top, right, bottom = _padding_values(props.get("padding"))
         inner = {
             "x": rect["x"] + left,
@@ -163,19 +181,19 @@ init -850 python in live_studio:
             "width": max(1.0, rect["width"] - left - right),
             "height": max(1.0, rect["height"] - top - bottom),
         }
-        node_type = str(node.get("type") or "fixed").lower()
+        node_type = str(current.get("type") or "fixed").lower()
         spacing = float(props.get("spacing", 0) or 0)
 
         if node_type == "vbox":
             cursor = inner["y"]
             for child in children:
-                _width, child_height = _managed_size(child, inner)
+                _width, child_height = _managed_size(effective_item(child), inner)
                 _layout_managed_node(child, inner, result, node_type, forced_y=cursor)
                 cursor += child_height + spacing
         elif node_type == "hbox":
             cursor = inner["x"]
             for child in children:
-                child_width, _height = _managed_size(child, inner)
+                child_width, _height = _managed_size(effective_item(child), inner)
                 _layout_managed_node(child, inner, result, node_type, forced_x=cursor)
                 cursor += child_width + spacing
         elif node_type in ("grid", "vpgrid"):
@@ -242,11 +260,31 @@ init -850 python in live_studio:
         height = max(1.0, _number_value(original.get("height"), 1.0))
         x += _number_value(props.get("xoffset")) - _number_value(base.get("xoffset"))
         y += _number_value(props.get("yoffset")) - _number_value(base.get("yoffset"))
-        if has_local_override(node.get("id"), "properties.xsize") or (runtime.get("drag") or {}).get("preview", {}).get("properties.xsize") is not None:
+        drag = runtime.get("drag") or {}
+        drag_is_this_node = drag.get("item_id") == node.get("id")
+        drag_preview = drag.get("preview", {}) if drag_is_this_node else {}
+        if has_local_override(node.get("id"), "properties.xsize") or drag_preview.get("properties.xsize") is not None:
             width = max(1.0, position_to_pixels(props.get("xsize"), config.screen_width))
-        if has_local_override(node.get("id"), "properties.ysize") or (runtime.get("drag") or {}).get("preview", {}).get("properties.ysize") is not None:
+        if has_local_override(node.get("id"), "properties.ysize") or drag_preview.get("properties.ysize") is not None:
             height = max(1.0, position_to_pixels(props.get("ysize"), config.screen_height))
         return {"x": x, "y": y, "width": width, "height": height}
+
+    def _layout_captured_node(node, result, inherited_dx=0.0, inherited_dy=0.0):
+        current = effective_item(node)
+        local = _captured_ui_bounds(current)
+        rect = clone(local)
+        rect["x"] = float(rect.get("x", 0)) + float(inherited_dx)
+        rect["y"] = float(rect.get("y", 0)) + float(inherited_dy)
+        result[node.get("id")] = rect
+        original = node.get("bounds") or {}
+        own_dx = float(local.get("x", 0)) - float(original.get("x", local.get("x", 0)) or 0)
+        own_dy = float(local.get("y", 0)) - float(original.get("y", local.get("y", 0)) or 0)
+        total_dx = float(inherited_dx) + own_dx
+        total_dy = float(inherited_dy) + own_dy
+        for child in node.get("children", []):
+            if child.get("visible", True):
+                _layout_captured_node(child, result, total_dx, total_dy)
+        return rect
 
     def _base_canvas_bounds_map(state):
         key = (id(state), int(runtime.get("state_revision", 0)))
@@ -260,7 +298,6 @@ init -850 python in live_studio:
             for node, _parent, _depth in walk_nodes(scene.get("nodes", [])):
                 if node.get("visible", True):
                     result[node.get("id")] = item_bounds(node)
-
         event = _active_preview_event(state)
         stage = {"x": 0.0, "y": 0.0, "width": float(config.screen_width), "height": float(config.screen_height)}
         for screen in state.get("ui_screens", []):
@@ -270,9 +307,9 @@ init -850 python in live_studio:
                 for node in screen.get("nodes", []):
                     _layout_managed_node(node, stage, result)
             else:
-                for node, _parent, _depth in walk_nodes(screen.get("nodes", [])):
+                for node in screen.get("nodes", []):
                     if node.get("visible", True):
-                        result[node.get("id")] = _captured_ui_bounds(node)
+                        _layout_captured_node(node, result)
         cache[key] = result
         if len(cache) > 8:
             for old_key in list(cache.keys())[:-5]:
@@ -285,7 +322,6 @@ init -850 python in live_studio:
         drag = runtime.get("drag") or {}
         if not drag or not drag.get("preview"):
             return base
-
         result = dict(base)
         item, _parent, kind = find_state_item(state, drag.get("item_id"))
         if item is None:
@@ -294,16 +330,16 @@ init -850 python in live_studio:
         if kind == "scene_node":
             result[item.get("id")] = item_bounds(current)
             return result
-
         screen = screen_for_node(state, item.get("id"))
         if screen and screen.get("managed"):
-            # Managed containers can move their children, so only this small
-            # hierarchy is recomputed during a drag.
             stage = {"x": 0.0, "y": 0.0, "width": float(config.screen_width), "height": float(config.screen_height)}
             for root in screen.get("nodes", []):
-                _layout_managed_node(effective_item(root), stage, result)
-        else:
-            result[item.get("id")] = _captured_ui_bounds(current)
+                _layout_managed_node(root, stage, result)
+        elif screen:
+            # Recompute the whole captured hierarchy so moving a container also
+            # moves every descendant selection box with it.
+            for root in screen.get("nodes", []):
+                _layout_captured_node(root, result)
         return result
 
     def item_stage_bounds(item, bounds_map=None):
@@ -313,24 +349,63 @@ init -850 python in live_studio:
             return bounds_map.get(item.get("id"))
         return item_bounds(item)
 
-    def hit_test_stage(x, y, state=None, bounds_map=None):
+    def active_canvas_kind():
+        return "ui_node" if str(layer_panel_mode).lower() == "ui" else "scene_node"
+
+    def canvas_kind_editable(kind):
+        return kind == active_canvas_kind()
+
+    def _descendant_ids(node):
+        result = set()
+        for child, _parent, _depth in walk_nodes(node.get("children", []) if node else []):
+            result.add(child.get("id"))
+        return result
+
+    def canvas_item_locked(item, kind, state=None):
+        if not item:
+            return True
+        if item.get("locked", False):
+            return True
+        if kind == "ui_node":
+            screen = screen_for_node(state or resolve_frame(), item.get("id"))
+            if screen is not None and screen.get("locked", False):
+                return True
+        return False
+
+    def hit_test_stage(x, y, state=None, bounds_map=None, exclude_id=None, allowed_ids=None):
         state = state or resolve_frame()
         bounds_map = bounds_map or canvas_bounds_map(state)
-        wanted = "ui_node" if str(selected_tree_tab).lower() == "ui" else "scene_node"
+        wanted = active_canvas_kind()
         matches = []
         for zorder, depth, item, kind in reversed(canvas_items(state)):
             if kind != wanted:
                 continue
-            bounds = item_stage_bounds(item, bounds_map)
-            if not bounds:
+            if item.get("id") == exclude_id:
                 continue
-            if bounds["x"] <= x <= bounds["x"] + bounds["width"] and bounds["y"] <= y <= bounds["y"] + bounds["height"]:
+            if allowed_ids is not None and item.get("id") not in allowed_ids:
+                continue
+            if canvas_item_locked(item, kind, state) or not item.get("selectable", True):
+                continue
+            bounds = item_stage_bounds(item, bounds_map)
+            if bounds and _point_inside_bounds(x, y, bounds):
                 matches.append((depth, zorder, item, kind))
         if not matches:
             return None, None
-        # Prefer the deepest child, then the visually highest item.
         matches.sort(key=lambda value: (value[0], value[1]), reverse=True)
         return matches[0][2], matches[0][3]
+
+    def _canvas_double_click(stage_x, stage_y):
+        now = time.time()
+        previous = runtime.get("last_canvas_click")
+        runtime["last_canvas_click"] = {"time": now, "x": stage_x, "y": stage_y}
+        if not previous:
+            return False
+        elapsed = now - float(previous.get("time", 0.0) or 0.0)
+        distance_sq = (stage_x - float(previous.get("x", stage_x))) ** 2 + (stage_y - float(previous.get("y", stage_y))) ** 2
+        if elapsed <= 0.45 and distance_sq <= 100.0:
+            runtime["last_canvas_click"] = None
+            return True
+        return False
 
     def _draw_rect(render, x, y, width, height, color, thickness=2):
         x = int(round(x))
@@ -397,12 +472,9 @@ init -850 python in live_studio:
             runtime["last_drag_render_time"] = now
             runtime["drag_revision"] = int(runtime.get("drag_revision", 0)) + 1
             runtime["canvas_cache"] = {}
-            screen_id = drag.get("captured_screen_id")
-            if screen_id:
-                cache = runtime.setdefault("captured_screen_preview_cache", {})
-                for key in list(cache.keys()):
-                    if key and key[0] == screen_id:
-                        cache.pop(key, None)
+            # Runtime UI previews are static during direct manipulation. The
+            # selection bounds update live; the source-backed screen is rebuilt
+            # and frozen once after mouse-up commits its widget overrides.
 
     def _snap_value(value):
         if not project_setting("snap_enabled", SNAP_ENABLED):
@@ -416,11 +488,26 @@ init -850 python in live_studio:
         return value
 
     def _drag_update(stage_x, stage_y):
+        global preview_mode
         drag = runtime.get("drag")
         if not drag:
             return
         dx = stage_x - drag.get("stage_x", stage_x)
         dy = stage_y - drag.get("stage_y", stage_y)
+        # Mouse-down followed by mouse-up at the same point is selection, not
+        # an edit. Avoid creating explicit position/size overrides and history
+        # entries for ordinary clicks on an already-selected object.
+        if abs(dx) < 0.5 and abs(dy) < 0.5:
+            return
+        if not drag.get("moved"):
+            drag["moved"] = True
+            runtime["last_canvas_click"] = None
+            # Do not replace the exact-capture preview merely because the user
+            # clicked an object. Enter Editable Layout only when a real transform
+            # drag begins.
+            if preview_mode == "capture":
+                preview_mode = "layout"
+                runtime["canvas_cache"] = {}
         mode = drag.get("mode", "move")
 
         if mode == "resize":
@@ -445,13 +532,25 @@ init -850 python in live_studio:
                 new_h = start_h + (start_y - new_y)
 
             if dir_x != 0:
-                _set_drag_preview("properties.xsize", _snap_value(new_w))
+                new_w = max(min_size, float(_snap_value(new_w)))
+                new_x = start_x + start_w - new_w if dir_x < 0 else start_x
+                _set_drag_preview("properties.xsize", new_w)
+                anchor_delta = 0.0
+                if drag.get("anchor_affects_bounds", True):
+                    anchor_value = drag.get("xanchor", 0)
+                    anchor_delta = position_to_pixels(anchor_value, new_w) - position_to_pixels(anchor_value, start_w)
+                # Changing size around a relative anchor shifts the top-left.
+                # Compensating by the anchor delta keeps the opposite edge fixed.
+                _set_drag_position(dx=(new_x - start_x) + anchor_delta)
             if dir_y != 0:
-                _set_drag_preview("properties.ysize", _snap_value(new_h))
-            if dir_x < 0:
-                _set_drag_position(dx=new_x - start_x)
-            if dir_y < 0:
-                _set_drag_position(dy=new_y - start_y)
+                new_h = max(min_size, float(_snap_value(new_h)))
+                new_y = start_y + start_h - new_h if dir_y < 0 else start_y
+                _set_drag_preview("properties.ysize", new_h)
+                anchor_delta = 0.0
+                if drag.get("anchor_affects_bounds", True):
+                    anchor_value = drag.get("yanchor", 0)
+                    anchor_delta = position_to_pixels(anchor_value, new_h) - position_to_pixels(anchor_value, start_h)
+                _set_drag_position(dy=(new_y - start_y) + anchor_delta)
             return
 
         if mode == "rotate":
@@ -459,6 +558,10 @@ init -850 python in live_studio:
             center_y = float(drag.get("center_y", 0))
             angle = degrees(atan2(stage_y - center_y, stage_x - center_x))
             target = float(drag.get("rotate", 0) or 0) + angle - float(drag.get("start_angle", angle))
+            while target > 180.0:
+                target -= 360.0
+            while target <= -180.0:
+                target += 360.0
             _set_drag_preview("properties.rotate", round(target, 2))
             return
 
@@ -468,15 +571,15 @@ init -850 python in live_studio:
         global project_dirty
         drag = runtime.get("drag")
         runtime["drag"] = None
-        runtime["drag_revision"] = int(runtime.get("drag_revision", 0)) + 1
         if not drag:
-            return
+            return False
         frame = frame_by_id(drag.get("frame_id"))
         if frame is None:
-            return
+            return bool(drag.get("selection_changed"))
         preview = drag.get("preview") or {}
-        if not preview:
-            return
+        if not drag.get("moved") or not preview:
+            return bool(drag.get("selection_changed"))
+        runtime["drag_revision"] = int(runtime.get("drag_revision", 0)) + 1
         before = clone(drag.get("before", {}))
         item_sets = frame.setdefault("changes", {}).setdefault("sets", {}).setdefault(drag.get("item_id"), {})
         for path, value in preview.items():
@@ -486,6 +589,7 @@ init -850 python in live_studio:
         after = clone(frame.get("changes", {}))
         label = {"move": "Move item", "resize": "Resize item", "rotate": "Rotate item"}.get(drag.get("mode"), "Edit item")
         _record_frame_change(label, before, after, drag.get("frame_id"))
+        return True
 
     def _node_displayable(item, kind, text_override=None):
         props = item.get("properties", {})
@@ -501,40 +605,40 @@ init -850 python in live_studio:
         if content_key in cache:
             return cache[content_key]
 
-        if node_type == "image":
+        # Explicitly converted runtime leaves retain their exact captured
+        # displayable. This preserves imagebutton states, evaluated text, fonts,
+        # and project styles instead of replacing them with generic placeholders.
+        source = item.get("source") or {}
+        runtime_leaf = runtime.get("widget_displayables", {}).get(item.get("id"))
+        captured_props = item.get("captured_properties", {}) or {}
+        content_keys = ("text",) if node_type == "text" else (("image",) if node_type in ("image", "add") else ("idle", "hover", "selected_idle", "selected_hover"))
+        captured_content_unchanged = all(props.get(key) == captured_props.get(key) for key in content_keys)
+        if runtime_leaf is not None and text_override is None and source.get("converted_from") and node_type in ("image", "add", "imagebutton", "text") and captured_content_unchanged:
+            result = runtime_leaf
+        elif node_type == "image":
             image_name = item.get("image") or props.get("image") or item.get("name")
             try:
                 result = renpy.displayable(image_name)
             except Exception:
                 result = Solid("#7a3444")
         elif node_type == "text":
-            result = Text(
-                str(text_override if text_override is not None else props.get("text", item.get("text", item.get("name", "Text")))),
-                size=int(props.get("size", 30) or 30),
-                color=str(props.get("color", TEXT_COLOR)),
-                bold=bool(props.get("bold", False)),
-                italic=bool(props.get("italic", False)),
-            )
+            result = Text(str(text_override if text_override is not None else props.get("text", item.get("text", item.get("name", "Text")))), size=int(props.get("size", 30) or 30), color=str(props.get("color", TEXT_COLOR)), bold=bool(props.get("bold", False)), italic=bool(props.get("italic", False)))
         elif node_type == "imagebutton":
             image_name = props.get("idle") or props.get("hover")
-            if image_name:
-                try:
-                    result = renpy.displayable(image_name)
-                except Exception:
-                    result = None
-            else:
+            try:
+                result = renpy.displayable(image_name) if image_name else None
+            except Exception:
                 result = None
             if result is None:
                 result = Fixed(Solid("#20344dcc"), Transform(Text("Image Button", size=22, color=TEXT_COLOR), xalign=0.5, yalign=0.5))
         elif node_type in ("hotspot", "textbutton", "button"):
-            # Canvas preview intentionally does not execute actions.
             label_text = text_override if text_override is not None else props.get("text", item.get("name", "Button"))
             label = Text(str(label_text), size=int(props.get("size", 24) or 24), color=str(props.get("color", TEXT_COLOR)))
             result = Fixed(Solid(str(props.get("background", "#20344dcc"))), Transform(label, xalign=0.5, yalign=0.5))
-        elif node_type in ("frame", "window", "fixed", "vbox", "hbox", "viewport", "vpgrid", "grid", "side"):
+        elif node_type in UI_CONTAINER_TYPES:
             background = props.get("background")
             result = Solid(str(background)) if background else NullPreviewDisplayable()
-        elif node_type in ("add",):
+        elif node_type == "add":
             try:
                 result = renpy.displayable(props.get("image") or item.get("image") or item.get("name"))
             except Exception:
@@ -587,6 +691,7 @@ init -850 python in live_studio:
         scene_children = []
         managed_ui_children = []
         captured_screen_children = []
+        dialogue_presentation_children = []
         screen_by_node = _ui_node_screen_map(state)
         event = _active_preview_event(state)
         choice_templates = {}
@@ -623,15 +728,26 @@ init -850 python in live_studio:
             for preview_bounds, preview_text in preview_entries:
                 displayable = _node_displayable(item, kind, preview_text)
                 props = item.get("properties", {})
+                preview_x = float(preview_bounds.get("x", 0))
+                preview_y = float(preview_bounds.get("y", 0))
+                preview_w = max(1, int(round(preview_bounds.get("width", 1))))
+                preview_h = max(1, int(round(preview_bounds.get("height", 1))))
                 transform_kwargs = {
-                    "xpos": int(round(preview_bounds.get("x", 0))),
-                    "ypos": int(round(preview_bounds.get("y", 0))),
-                    "xysize": (max(1, int(round(preview_bounds.get("width", 1)))), max(1, int(round(preview_bounds.get("height", 1))))),
+                    "xpos": int(round(preview_x)),
+                    "ypos": int(round(preview_y)),
+                    "xysize": (preview_w, preview_h),
                 }
                 if props.get("alpha") is not None:
                     transform_kwargs["alpha"] = float(props.get("alpha", 1.0) or 0.0)
                 if props.get("rotate"):
                     transform_kwargs["rotate"] = float(props.get("rotate") or 0.0)
+                    # Rotate around the measured center instead of the default
+                    # top-left. This keeps the object in place while the rotate
+                    # tool is dragged and matches the selection handle center.
+                    transform_kwargs["xpos"] = preview_x + preview_w / 2.0
+                    transform_kwargs["ypos"] = preview_y + preview_h / 2.0
+                    transform_kwargs["xanchor"] = 0.5
+                    transform_kwargs["yanchor"] = 0.5
                 try:
                     transformed = Transform(displayable, **transform_kwargs)
                     if kind == "scene_node":
@@ -653,7 +769,19 @@ init -850 python in live_studio:
                 except Exception as exc:
                     log_diagnostic("warning", "Captured screen preview failed", {"screen": screen.get("name"), "error": repr(exc)})
 
-        return scene_children + captured_screen_children + managed_ui_children
+        # Active say/choice screens are presentation for Dialogue rather than
+        # editable UI hierarchy entries. They remain exact frozen runtime pixels
+        # so a scene transform does not make dialogue screens disappear or rerun.
+        for presentation in sorted(runtime.get("dialogue_presentation_roots", []) or [], key=lambda item: (str(item.get("layer", "screens")), int(item.get("zorder", 0) or 0))):
+            root = presentation.get("root")
+            if root is None:
+                continue
+            try:
+                dialogue_presentation_children.append(Transform(root, xpos=0, ypos=0))
+            except Exception as exc:
+                log_diagnostic("warning", "Dialogue presentation preview failed", {"screen": presentation.get("name"), "error": repr(exc)})
+
+        return scene_children + captured_screen_children + dialogue_presentation_children + managed_ui_children
 
     def _thumbnail_source_for_item(item, kind):
         if not item:
@@ -755,46 +883,34 @@ init -850 python in live_studio:
         return None
 
     def _begin_canvas_drag(item, kind, mode, stage_x, stage_y, bounds, resize_handle=None):
-        global preview_mode
-        if item is None or item.get("locked", False):
+        if item is None or canvas_item_locked(item, kind) or not canvas_kind_editable(kind):
             return False
-        if kind == "ui_node" and not item.get("widget_id"):
-            renpy.notify("This captured widget has no Ren'Py id. Convert its UI screen to a managed copy to edit it.")
+        selected_screen = screen_for_node(resolve_frame(), item.get("id")) if kind == "ui_node" else None
+        if kind == "ui_node" and selected_screen and not selected_screen.get("managed") and not item.get("widget_id"):
+            log_diagnostic("warning", "Blocked direct edit of runtime UI without widget id", {"screen": selected_screen.get("name"), "item": item.get("name"), "mode": mode})
+            renpy.notify("This runtime UI item has no authored id. Use Convert Screen Approximation to edit it explicitly.")
             return False
-        # Exact Capture is a static screenshot. Direct manipulation switches to
-        # Editable Layout so the real preview object follows its selection box.
-        if preview_mode == "capture":
-            preview_mode = "layout"
-            runtime["canvas_cache"] = {}
-
         props = item.get("properties", {}) or {}
         frame = current_frame()
-        selected_screen = screen_for_node(resolve_frame(), item.get("id")) if kind == "ui_node" else None
+        managed_screen = bool(selected_screen and selected_screen.get("managed"))
         center_x = float(bounds.get("x", 0)) + float(bounds.get("width", 1)) / 2.0
         center_y = float(bounds.get("y", 0)) + float(bounds.get("height", 1)) / 2.0
         runtime["drag"] = {
-            "mode": mode,
-            "resize_handle": resize_handle,
-            "item_id": item.get("id"),
-            "frame_id": current_frame_id,
-            "ui_node": kind == "ui_node",
+            "mode": mode, "resize_handle": resize_handle, "item_id": item.get("id"),
+            "frame_id": current_frame_id, "ui_node": kind == "ui_node",
             "captured_screen_id": selected_screen.get("id") if selected_screen and not selected_screen.get("managed") else None,
             "before": clone(frame.get("changes", {})) if frame else {},
-            "stage_x": stage_x,
-            "stage_y": stage_y,
-            "xpos": props.get("xpos"),
-            "ypos": props.get("ypos"),
-            "xoffset": props.get("xoffset", 0),
-            "yoffset": props.get("yoffset", 0),
-            "bounds_x": float(bounds.get("x", 0)),
-            "bounds_y": float(bounds.get("y", 0)),
-            "width": max(1.0, float(bounds.get("width", 1))),
-            "height": max(1.0, float(bounds.get("height", 1))),
-            "rotate": props.get("rotate", 0),
-            "center_x": center_x,
-            "center_y": center_y,
+            "stage_x": stage_x, "stage_y": stage_y,
+            "xpos": props.get("xpos"), "ypos": props.get("ypos"),
+            "xoffset": props.get("xoffset", 0), "yoffset": props.get("yoffset", 0),
+            "xanchor": props.get("xanchor", props.get("xalign", 0) if props.get("xalign") is not None else 0),
+            "yanchor": props.get("yanchor", props.get("yalign", 0) if props.get("yalign") is not None else 0),
+            "anchor_affects_bounds": kind == "scene_node" or managed_screen,
+            "bounds_x": float(bounds.get("x", 0)), "bounds_y": float(bounds.get("y", 0)),
+            "width": max(1.0, float(bounds.get("width", 1))), "height": max(1.0, float(bounds.get("height", 1))),
+            "rotate": props.get("rotate", 0), "center_x": center_x, "center_y": center_y,
             "start_angle": degrees(atan2(stage_y - center_y, stage_x - center_x)),
-            "preview": {},
+            "preview": {}, "selection_changed": False, "moved": False,
         }
         runtime["last_drag_render_time"] = 0.0
         return True
@@ -837,13 +953,17 @@ init -850 python in live_studio:
             offset_x = int(round((width - preview_width) / 2.0))
             offset_y = int(round((height - preview_height) / 2.0))
             self.last_geometry = (offset_x, offset_y, scale)
+            stable_st = max(0.0, time.time() - float(runtime.get("canvas_animation_epoch", time.time()) or time.time()))
 
             state, bounds_map, preview = _canvas_frame_data()
 
             if preview is not None:
                 try:
                     transformed = Transform(preview, xysize=(preview_width, preview_height))
-                    result.blit(renpy.render(transformed, preview_width, preview_height, st, at), (offset_x, offset_y))
+                    # Interaction restarts update the inspector and panels, but
+                    # should not restart ATL/DynamicDisplayable animations in
+                    # the canvas. A persistent time base keeps them continuous.
+                    result.blit(renpy.render(transformed, preview_width, preview_height, stable_st, stable_st), (offset_x, offset_y))
                 except Exception as exc:
                     log_diagnostic("warning", "Canvas preview render failed", repr(exc))
 
@@ -870,7 +990,7 @@ init -850 python in live_studio:
                         _draw_rect(result, offset_x + bounds["x"] * scale, offset_y + bounds["y"] * scale, bounds["width"] * scale, bounds["height"] * scale, "#6f8fb844" if kind == "scene_node" else "#65c7b055", 1)
 
             item, _parent_id, kind = selected_item(state)
-            if item is not None and kind in ("scene_node", "ui_node"):
+            if item is not None and kind in ("scene_node", "ui_node") and canvas_kind_editable(kind):
                 bounds = item_stage_bounds(item, bounds_map)
                 if bounds:
                     sx = offset_x + bounds["x"] * scale
@@ -878,9 +998,10 @@ init -850 python in live_studio:
                     sw = bounds["width"] * scale
                     sh = bounds["height"] * scale
                     _draw_rect(result, sx, sy, sw, sh, SELECTION_COLOR, 2)
-                    label = Text(item.get("name", kind), size=16, color=TEXT_COLOR, outlines=[(1, "#000000", 0, 0)])
+                    label_text = safe_display_text(item.get("name", kind) or kind, 52, escape_interpolation=False)
+                    label = Text(label_text, size=16, color=TEXT_COLOR, outlines=[(1, "#000000", 0, 0)], substitute=False)
                     result.blit(renpy.render(label, max(1, width - int(sx)), 30, st, at), (int(sx), max(0, int(sy) - 22)))
-                    if not item.get("locked", False) and tool_mode in ("select", "resize", "rotate"):
+                    if not canvas_item_locked(item, kind, state) and tool_mode in ("select", "resize", "rotate"):
                         for handle_name, handle in _selection_handles(bounds, scale).items():
                             hx = offset_x + handle["x"] * scale
                             hy = offset_y + handle["y"] * scale
@@ -891,6 +1012,7 @@ init -850 python in live_studio:
             return result
 
         def event(self, ev, x, y, st):
+            global preview_mode
             offset_x, offset_y, scale = self.last_geometry
             scale = scale or 1.0
             stage_x = (x - offset_x) / scale
@@ -902,45 +1024,72 @@ init -850 python in live_studio:
                 bounds_map = canvas_bounds_map(state)
                 selected, _selected_parent, selected_kind = selected_item(state)
                 selected_bounds = item_stage_bounds(selected, bounds_map) if selected_kind in ("scene_node", "ui_node") else None
+                double_click = _canvas_double_click(stage_x, stage_y)
+
+                # A normal click inside the current selection starts moving that
+                # selection even when another object overlaps it. A double-click
+                # explicitly drills through to the highest different object.
+                if double_click and selected is not None and selected_bounds and canvas_kind_editable(selected_kind) and _point_inside_bounds(stage_x, stage_y, selected_bounds):
+                    candidate, candidate_kind = hit_test_stage(stage_x, stage_y, state, bounds_map, exclude_id=selected.get("id"))
+                    if candidate is not None and select_item_live(candidate.get("id"), candidate_kind):
+                        # Selection changes redraw the outline/inspector but keep
+                        # the existing preview object and animation state alive.
+                        restart()
+                    raise renpy.IgnoreEvent()
+
+                # When a UI container is already selected, clicking it again
+                # drills into its own descendants before considering unrelated
+                # overlapping screens/groups. Empty container space still moves
+                # the container and therefore its whole child hierarchy.
+                if selected is not None and selected_kind == "ui_node" and is_ui_container(selected) and selected_bounds and _point_inside_bounds(stage_x, stage_y, selected_bounds) and not double_click:
+                    descendant_ids = _descendant_ids(selected)
+                    child, child_kind = hit_test_stage(stage_x, stage_y, state, bounds_map, allowed_ids=descendant_ids)
+                    if child is not None:
+                        selection_changed = select_item_live(child.get("id"), child_kind)
+                        child_bounds = item_stage_bounds(child, bounds_map) or {}
+                        drag_mode = "move" if tool_mode == "select" else tool_mode
+                        if drag_mode in ("move", "resize", "rotate") and _begin_canvas_drag(child, child_kind, drag_mode, stage_x, stage_y, child_bounds, "se" if drag_mode == "resize" else None):
+                            runtime["drag"]["selection_changed"] = bool(selection_changed)
+                        elif selection_changed:
+                            restart()
+                        renpy.redraw(self, 0)
+                        raise renpy.IgnoreEvent()
 
                 # Selection handles take priority. Select mode behaves like the
                 # original editor: dragging the object moves it, while edge/corner
                 # handles resize and the upper handle rotates.
-                if selected is not None and selected_bounds and not selected.get("locked", False):
+                if selected is not None and selected_bounds and canvas_kind_editable(selected_kind) and not canvas_item_locked(selected, selected_kind, state):
                     handle = _handle_at(stage_x, stage_y, selected_bounds, scale, include_rotate=True)
                     if handle == "rotate" and tool_mode in ("select", "rotate"):
-                        global preview_mode
-                        preview_mode = "layout"
                         if _begin_canvas_drag(selected, selected_kind, "rotate", stage_x, stage_y, selected_bounds):
-                            runtime["canvas_cache"] = {}
                             renpy.redraw(self, 0)
                             raise renpy.IgnoreEvent()
                     elif handle in _RESIZE_DIRECTIONS and tool_mode in ("select", "resize"):
-                        preview_mode = "layout"
                         if _begin_canvas_drag(selected, selected_kind, "resize", stage_x, stage_y, selected_bounds, handle):
-                            runtime["canvas_cache"] = {}
                             renpy.redraw(self, 0)
                             raise renpy.IgnoreEvent()
                     elif _point_inside_bounds(stage_x, stage_y, selected_bounds) and tool_mode in ("select", "move"):
-                        preview_mode = "layout"
                         if _begin_canvas_drag(selected, selected_kind, "move", stage_x, stage_y, selected_bounds):
-                            runtime["canvas_cache"] = {}
                             renpy.redraw(self, 0)
                             raise renpy.IgnoreEvent()
 
                 item, kind = hit_test_stage(stage_x, stage_y, state, bounds_map)
                 if item is not None:
-                    select_item_live(item.get("id"), kind)
+                    selection_changed = select_item_live(item.get("id"), kind)
                     bounds = item_stage_bounds(item, bounds_map) or {}
                     drag_mode = "move" if tool_mode == "select" else tool_mode
-                    if drag_mode in ("move", "resize", "rotate") and not item.get("locked", False):
-                        preview_mode = "layout"
+                    if drag_mode in ("move", "resize", "rotate") and not canvas_item_locked(item, kind, state):
                         resize_handle = "se" if drag_mode == "resize" else None
                         if _begin_canvas_drag(item, kind, drag_mode, stage_x, stage_y, bounds, resize_handle):
-                            runtime["canvas_cache"] = {}
+                            runtime["drag"]["selection_changed"] = bool(selection_changed)
+                        elif selection_changed:
+                            restart()
+                    elif selection_changed:
+                        restart()
                     renpy.redraw(self, 0)
                     raise renpy.IgnoreEvent()
-                clear_selection_live()
+                if clear_selection_live():
+                    restart()
                 raise renpy.IgnoreEvent()
 
             if ev.type == pygame.MOUSEMOTION and runtime.get("drag"):
@@ -952,10 +1101,11 @@ init -850 python in live_studio:
 
             if ev.type == pygame.MOUSEBUTTONUP and getattr(ev, "button", None) == 1 and runtime.get("drag"):
                 _drag_update(stage_x, stage_y)
-                runtime["drag_revision"] = int(runtime.get("drag_revision", 0)) + 1
-                runtime["canvas_cache"] = {}
-                _drag_finish()
-                restart()
+                changed = _drag_finish()
+                if changed:
+                    restart()
+                else:
+                    renpy.redraw(self, 0)
                 raise renpy.IgnoreEvent()
             return None
 

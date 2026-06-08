@@ -1,8 +1,4 @@
-﻿Copyright © 2026 Fait
-All Rights Reserved.
-
-
-# Project Tac â€“ Author Cheat Sheet
+﻿# Project Tac â€“ Author Cheat Sheet
 
 Use this when writing content. Sections are ordered by the things you touch most often.
 

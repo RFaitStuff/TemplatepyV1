@@ -40,31 +40,7 @@ define mood_max_intensity        = 15
 define mood_default_intensity    = 5   # fallback when set_mood() is called bare
 
 
-# -----------------------------------------------------------------------------
-# MOOD DEFINITIONS
-# Add or remove emotions here - the rest of the system picks them up.
-#   {emotion: (category, priority, affects_image)}
-# -----------------------------------------------------------------------------
-define MOOD_DEFS = {
-    "happy":   ("mood", 1.0, True),
-    "sad":     ("mood", 1.0, True),
-    "angry":   ("mood", 1.0, True),
-    "nervous": ("mood", 1.0, True),
-}
-
-
-# -----------------------------------------------------------------------------
-# INCOMPATIBILITY MATRIX
-#   Setting `key` LOWERS each listed emotion by the given amount.
-#   1.0 = strong opposition, 0.5 = mild dampening.
-#   Asymmetric is fine (e.g. happy crushes sad more than sad crushes happy).
-# -----------------------------------------------------------------------------
-define MOOD_INCOMPAT = {
-    "happy": {"sad": 2, "angry": 1, "nervous": 1},
-    "sad": {"happy": 2},
-    "angry": {"happy": 1, "nervous": 1},
-    "nervous": {"happy": 1, "angry": 1},
-}
+# Mood definitions and incompatibility rules live in Game/Data/Characters.rpy.
 
 
 # Per-character hour counter for the auto-decay tick.
@@ -166,6 +142,8 @@ init python:
 
         Pass mood_name=None or "neutral" to clear all moods on this character.
         """
+        if not system_enabled("moods"):
+            return "neutral" if mood_name is None else None
         if mood_name is not None:
             if mood_name == "neutral":
                 _ensure_mood_dict(char).clear()
@@ -195,6 +173,8 @@ init python:
     # ---- mutators --------------------------------------------------------
     def add_mood(char, mood_name, delta):
         """Adjust intensity of `mood_name` by `delta` (clamped to 0..max)."""
+        if not system_enabled("moods"):
+            return None
         if not mood_name or mood_name == "neutral":
             return
         if not _is_known_mood(mood_name):
@@ -213,6 +193,8 @@ init python:
         - intensity=None uses mood_default_intensity.
         - mood_name=None or "neutral" clears all moods on this character.
         """
+        if not system_enabled("moods"):
+            return None
         if mood_name in (None, "neutral"):
             _ensure_mood_dict(char).clear()
             return
@@ -267,6 +249,8 @@ init python:
 
     def decay_moods(char, amount=1):
         """Reduce every active mood on `char` by `amount`."""
+        if not system_enabled("moods"):
+            return None
         moods = _moods_of(char)
         for k in list(moods.keys()):
             moods[k] -= amount

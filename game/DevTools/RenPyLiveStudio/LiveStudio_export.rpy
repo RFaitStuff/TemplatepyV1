@@ -115,7 +115,36 @@ init -870 python in live_studio:
             lines.append("{}{} {}".format(indent, key, format_value(value)))
         return lines
 
-    def node_show_lines(node, indent="    "):
+    def _explicit_scene_property_changes(frame_id, item_id, include_ancestors=False):
+        values = {}
+        chain = []
+        cursor = frame_by_id(frame_id)
+        seen = set()
+        while cursor is not None and cursor.get("id") not in seen:
+            seen.add(cursor.get("id"))
+            chain.append(cursor)
+            if not include_ancestors:
+                break
+            cursor = frame_by_id(cursor.get("parent_id")) if cursor.get("parent_id") else None
+        for frame in reversed(chain):
+            for path, value in frame.get("changes", {}).get("sets", {}).get(item_id, {}).items():
+                if str(path).startswith("properties."):
+                    values[str(path).split(".", 1)[1]] = clone(value)
+        return values
+
+    def _scene_field_was_authored(frame_id, item_id, field, include_ancestors=False):
+        cursor = frame_by_id(frame_id)
+        seen = set()
+        while cursor is not None and cursor.get("id") not in seen:
+            seen.add(cursor.get("id"))
+            if field in cursor.get("changes", {}).get("sets", {}).get(item_id, {}):
+                return True
+            if not include_ancestors or not cursor.get("parent_id"):
+                break
+            cursor = frame_by_id(cursor.get("parent_id"))
+        return False
+
+    def node_show_lines(node, indent="    ", transform_properties=None, include_zorder=True):
         if node.get("type") == "displayable" and not node.get("image"):
             return ["{}# Unsupported captured displayable: {}".format(indent, node.get("name", "displayable"))]
         image_name = str(node.get("image") or node.get("name") or "").strip()
@@ -132,9 +161,9 @@ init -870 python in live_studio:
             zorder = int(node.get("zorder", 0) or 0)
         except Exception:
             zorder = 0
-        if zorder:
+        if include_zorder and zorder:
             command += " zorder {}".format(zorder)
-        property_lines = _transform_property_lines(node.get("properties", {}), indent + "    ")
+        property_lines = _transform_property_lines(node.get("properties", {}) if transform_properties is None else transform_properties, indent + "    ")
         if property_lines:
             return [command + ":"] + property_lines
         return [command]
@@ -173,7 +202,17 @@ init -870 python in live_studio:
             if changed:
                 if old is not None and (old.get("tag") != node.get("tag") or old.get("layer") != node.get("layer")):
                     lines.append(_hide_image_line(old, indent))
-                lines.extend(node_show_lines(node, indent))
+                # Runtime-captured placement is the original project's behavior,
+                # not an editor change. Export only transform paths authored in
+                # this frame. New editor-owned images still export their complete
+                # placement because no original source exists for them.
+                authored = str((node.get("source") or {}).get("created_by") or "") == "live_studio"
+                # A replacement show must carry all previous Live Studio transform
+                # edits forward, but never captured defaults from the original game.
+                replacement_show = old is None or old.get("image") != node.get("image") or old.get("tag") != node.get("tag") or old.get("layer") != node.get("layer")
+                transform_values = node.get("properties", {}) if authored else _explicit_scene_property_changes(frame_id, item_id, include_ancestors=replacement_show)
+                include_zorder = authored or _scene_field_was_authored(frame_id, item_id, "zorder", include_ancestors=replacement_show)
+                lines.extend(node_show_lines(node, indent, transform_values, include_zorder=include_zorder))
         return lines
 
     def action_expression(action):
@@ -837,10 +876,18 @@ init -870 python in live_studio:
 
             state = resolve_frame(frame_id)
             managed_names = set()
+            frame_sets = frame.get("changes", {}).get("sets", {})
             for screen in state.get("ui_screens", []) or []:
                 if not screen.get("managed"):
+                    for node, _parent_id, _depth in walk_nodes(screen.get("nodes", [])):
+                        property_changes = [path for path in frame_sets.get(node.get("id"), {}) if str(path).startswith("properties.")]
+                        if property_changes and not node.get("widget_id"):
+                            warnings.append("Frame '{}' has runtime UI changes on '{} / {}' without an authored widget id; those changes cannot be exported and should be converted explicitly".format(frame.get("name", frame_id), screen.get("name", "screen"), node.get("name", "widget")))
                     continue
                 screen_name = safe_identifier(screen.get("name"), "screen")
+                source = screen.get("source") or {}
+                if source.get("provenance") == "converted_approximation" or source.get("converted_from"):
+                    warnings.append("Managed screen '{}' is an approximation converted from runtime UI; review conditions, loops, custom displayables, and dynamic values before export".format(screen_name))
                 if screen_name in managed_names:
                     errors.append("Frame '{}' contains duplicate managed screen name '{}'".format(frame.get("name", frame_id), screen_name))
                 managed_names.add(screen_name)
@@ -930,6 +977,11 @@ init -870 python in live_studio:
 
     def generate_exports():
         global export_cache
+        # Export must represent what is visibly typed in the Inspector, not the
+        # last value that happened to lose focus. This also closes any pending
+        # field-level undo transaction before source generation.
+        if "flush_pending_input_edits" in globals():
+            flush_pending_input_edits(False)
         screen_definitions, screen_mapping = _screen_export_variants()
         overlay_definitions, overlay_mapping = _overlay_export_variants()
         # build_screens_export recomputes small mappings to keep each builder

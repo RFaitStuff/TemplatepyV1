@@ -139,15 +139,105 @@ init -879 python in live_studio:
 
     SOURCE_INTERACTION_TYPES = ("Say", "Menu", "Pause")
 
-    def _source_current_node():
+    def _lookup_name_value(value):
+        """Restores a JSON-safe Ren'Py AST name to its lookup form."""
+        if isinstance(value, list):
+            return tuple(_lookup_name_value(item) for item in value)
+        return value
+
+    def _normalized_source_filename(value):
+        return str(value or "").replace("\\", "/").lower()
+
+    def _source_location_matches(node, source_ref):
+        if node is None or not isinstance(source_ref, dict):
+            return False
+        wanted_line = int(source_ref.get("line") or 0)
+        node_line = int(getattr(node, "linenumber", 0) or 0)
+        if wanted_line and node_line != wanted_line:
+            return False
+        wanted_file = _normalized_source_filename(source_ref.get("filename"))
+        node_file = _normalized_source_filename(getattr(node, "filename", ""))
+        if wanted_file and node_file:
+            return node_file == wanted_file or node_file.endswith("/" + wanted_file) or wanted_file.endswith("/" + node_file)
+        return bool(wanted_line and node_line == wanted_line)
+
+    def _script_nodes():
+        """Yields script nodes using public-ish Script collections defensively."""
+        script = getattr(renpy.game, "script", None)
+        if script is None:
+            return []
+        values = []
         try:
-            name = runtime.get("source_origin_name") or renpy.game.context().current
+            all_stmts = getattr(script, "all_stmts", []) or []
+            values.extend(list(all_stmts.values()) if isinstance(all_stmts, dict) else list(all_stmts))
+        except Exception:
+            pass
+        if not values:
+            try:
+                values.extend(list((getattr(script, "namemap", {}) or {}).values()))
+            except Exception:
+                pass
+        return values
+
+    def _source_node_from_reference(source_ref):
+        if not isinstance(source_ref, dict):
+            return None
+        script = getattr(renpy.game, "script", None)
+        if script is None:
+            return None
+
+        node_name = _lookup_name_value(source_ref.get("node_name"))
+        if node_name is not None:
+            try:
+                node = script.lookup(node_name)
+                if node is not None and (not source_ref.get("line") or _source_location_matches(node, source_ref)):
+                    return node
+            except Exception:
+                pass
+
+        # get_filename_line() identifies the interaction the player is seeing,
+        # while context.current may already point at that statement's successor.
+        # Recover the visible statement by location before falling back to the
+        # context pointer, otherwise the first future dialogue line is skipped.
+        matches = [node for node in _script_nodes() if _source_location_matches(node, source_ref)]
+        if not matches:
+            return None
+        wanted_statement = str(source_ref.get("statement") or "").lower()
+        if wanted_statement:
+            for node in matches:
+                if type(node).__name__.lower() == wanted_statement:
+                    return node
+        for preferred in ("Say", "Menu", "Pause", "UserStatement"):
+            for node in matches:
+                if type(node).__name__ == preferred:
+                    return node
+        return matches[0]
+
+    def _context_source_node():
+        try:
+            name = runtime.get("source_origin_name")
+            if name is None:
+                name = renpy.game.context().current
             if name is None:
                 return None
-            return renpy.game.script.lookup(name)
+            return renpy.game.script.lookup(_lookup_name_value(name))
         except Exception as exc:
             log_diagnostic("warning", "Could not inspect current script statement", repr(exc))
             return None
+
+    def _active_source_reference():
+        frame = current_frame() or {}
+        source = frame.get("source_ref") or {}
+        if source.get("filename") or source.get("line") or source.get("node_name"):
+            return source
+        return runtime.get("capture_source") or runtime.get("preopen_source") or {}
+
+    def _source_current_node():
+        source_ref = _active_source_reference()
+        exact = _source_node_from_reference(source_ref)
+        if exact is not None:
+            return exact
+        return _context_source_node()
 
     def _source_imspec(node):
         value = getattr(node, "imspec", None)
@@ -211,6 +301,7 @@ init -879 python in live_studio:
                     "target_source": {
                         "filename": str(getattr(block[0], "filename", "") or "") if block else "",
                         "line": int(getattr(block[0], "linenumber", 0) or 0) if block else 0,
+                        "node_name": json_safe(getattr(block[0], "name", None)) if block else None,
                     },
                 })
             data["choices"] = choices
@@ -287,16 +378,46 @@ init -879 python in live_studio:
             title = node_type
         return "{} → {}".format(branch, title) if branch else title
 
+    def _source_candidate_ref(data, node_type):
+        return {
+            "filename": data.get("filename", ""),
+            "line": data.get("line", 0),
+            "statement": str(node_type or "").lower(),
+            "label": "",
+            "node_name": clone(data.get("name")),
+        }
+
+    def _source_flow_cache_key():
+        source = _active_source_reference()
+        return (current_frame_id, source_reference_key(source), repr(source.get("node_name")))
+
     def refresh_source_flow_candidates(limit=24, restart_ui=True):
         candidates = []
-        current = _source_current_node()
+        source_ref = _active_source_reference()
+        exact_current = _source_node_from_reference(source_ref)
+        context_current = _context_source_node()
+        current = exact_current or context_current
         if current is None:
             runtime["source_candidates"] = []
+            runtime["source_candidates_key"] = _source_flow_cache_key()
+            runtime["source_flow_status"] = "No script node could be resolved for this frame."
+            if restart_ui:
+                restart()
             return []
 
-        starts = _source_successors(current)
-        # When the current interaction is a menu, its successors are the real
-        # next branches. For normal interactions, next is usually linear.
+        # An exact location/name refers to the interaction represented by the
+        # current frame, so traverse after it. If only context.current could be
+        # resolved, Ren'Py may already have advanced to the first future node;
+        # include that node instead of skipping it.
+        source_statement = str(source_ref.get("statement") or "").lower()
+        source_is_placeholder = source_statement in ("branch", "future", "target")
+        if exact_current is not None and not source_is_placeholder:
+            starts = _source_successors(current)
+            runtime["source_flow_status"] = "Future states resolved from the current frame source."
+        else:
+            starts = [(current, "", "")]
+            runtime["source_flow_status"] = "Future states resolved from the branch target." if source_is_placeholder else "Future states resolved from the runtime context."
+
         queue = []
         for node, branch, condition in starts:
             if node is not None:
@@ -327,12 +448,7 @@ init -879 python in live_studio:
                     "condition": condition,
                     "statement": data,
                     "steps": clone(steps),
-                    "source_ref": {
-                        "filename": data.get("filename", ""),
-                        "line": data.get("line", 0),
-                        "statement": node_type.lower(),
-                        "label": "",
-                    },
+                    "source_ref": _source_candidate_ref(data, node_type),
                 })
                 continue
 
@@ -345,12 +461,7 @@ init -879 python in live_studio:
                     "condition": condition,
                     "statement": data,
                     "steps": clone(steps),
-                    "source_ref": {
-                        "filename": data.get("filename", ""),
-                        "line": data.get("line", 0),
-                        "statement": node_type.lower(),
-                        "label": "",
-                    },
+                    "source_ref": _source_candidate_ref(data, node_type),
                 })
                 continue
             for successor, child_branch, child_condition in successors:
@@ -362,14 +473,58 @@ init -879 python in live_studio:
                 queue.append((successor, combined_branch, child_condition or condition, new_steps))
 
         runtime["source_candidates"] = candidates
+        runtime["source_candidates_key"] = _source_flow_cache_key()
+        if not candidates:
+            runtime["source_flow_status"] = "No static future interaction was found."
         if restart_ui:
             restart()
         return candidates
 
     def source_flow_candidates():
-        if "source_candidates" not in runtime:
+        if runtime.get("source_candidates_key") != _source_flow_cache_key():
             return refresh_source_flow_candidates(restart_ui=False)
         return runtime.get("source_candidates", [])
+
+    def source_flow_status():
+        source_flow_candidates()
+        return str(runtime.get("source_flow_status") or "")
+
+    def has_stored_next_frame():
+        return bool(expected_next_frame_id())
+
+    def future_source_count():
+        return len(source_flow_candidates())
+
+    def next_frame_action_label():
+        if expected_next_frame_id():
+            return "Next Frame"
+        count = future_source_count()
+        if count == 1:
+            return "Import Next"
+        if count > 1:
+            return "Choose Future"
+        return "Next Frame"
+
+    def advance_or_import_next():
+        target = expected_next_frame_id()
+        if target:
+            select_frame(target)
+            return
+        candidates = source_flow_candidates()
+        if len(candidates) == 1:
+            import_source_candidate(0)
+            return
+        if len(candidates) > 1:
+            toggle_future_popup(True)
+            try:
+                renpy.notify("Choose a future branch")
+            except Exception:
+                pass
+            return
+        try:
+            renpy.notify("No next frame or static future interaction found")
+        except Exception:
+            pass
 
     def _remove_images_for_source(layer, tag=None):
         state = resolve_frame()
@@ -414,6 +569,7 @@ init -879 python in live_studio:
                 "line": target_source.get("line", 0),
                 "statement": "branch",
                 "label": "",
+                "node_name": clone(target_source.get("node_name")),
             }
             _restore_frame_internal(branch, insert_index + offset)
             _history_push({
@@ -440,6 +596,7 @@ init -879 python in live_studio:
 
     def import_source_candidate(index):
         global project_dirty
+        close_all_popups(False)
         candidates = source_flow_candidates()
         try:
             candidate = candidates[int(index)]

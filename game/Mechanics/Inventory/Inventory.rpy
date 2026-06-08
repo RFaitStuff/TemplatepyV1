@@ -39,6 +39,8 @@ init -2 python:
 init python:
 
     def add_item(item_id, n=1):
+        if not system_enabled("inventory"):
+            return None
         if n <= 0:
             return
         player_inventory[item_id] = player_inventory.get(item_id, 0) + n
@@ -48,6 +50,8 @@ init python:
             pass
 
     def remove_item(item_id, n=1):
+        if not system_enabled("inventory"):
+            return None
         cur = player_inventory.get(item_id, 0)
         delta = min(cur, n)
         new = max(0, cur - n)
@@ -62,9 +66,13 @@ init python:
                 pass
 
     def has_item(item_id, n=1):
+        if not system_enabled("inventory"):
+            return False
         return player_inventory.get(item_id, 0) >= n
 
     def item_count(item_id):
+        if not system_enabled("inventory"):
+            return 0
         return player_inventory.get(item_id, 0)
 
     def item_name(item_id):
@@ -74,13 +82,6 @@ init python:
         return item_defs.get(item_id, {}).get("desc", "")
 
     def inventory_list():
+        if not system_enabled("inventory"):
+            return []
         return sorted(player_inventory.items())
-
-
-# =============================================================================
-# Seed: a few example items (delete or replace freely).
-# =============================================================================
-init -1 python:
-    define_item("lost_pen",  name="A Lost Pen",   desc="Cheap-looking pen. Someone dropped it.")
-    define_item("note",      name="Folded Note",  desc="Handwriting you don't recognize.")
-    define_item("coin",      name="Coin",         desc="Spare change.")

@@ -313,11 +313,13 @@ init python:
                 image_data = character_image_debug(cid)
             except Exception:
                 image_data = {}
+            stat_text = " ".join(
+                "{}={}".format(stat_name, data.get(stat_name, 0))
+                for stat_name in RELATIONSHIP_STATS
+            )
             lines.extend([
                 "{} ({})".format(character_display_name(cid), cid),
-                "  stats: love={} lust={} trust={} respect={}".format(
-                    data.get("love", 0), data.get("lust", 0), data.get("trust", 0), data.get("respect", 0)
-                ),
+                "  stats: {}".format(stat_text),
                 "  moods: {}".format(data.get("moods", {})),
                 "  reactions: {}".format(data.get("reactions", {})),
                 "  statuses: {}".format(data.get("statuses", {})),
@@ -851,7 +853,7 @@ screen debug_tools_characters():
             vbox:
                 spacing 8
                 text "[character_display_name(_cid)] ([_cid])" style "debug_tool_heading"
-                for _stat_name in ("love", "lust", "trust", "respect"):
+                for _stat_name in RELATIONSHIP_STATS:
                     hbox:
                         spacing 7
                         text "[_stat_name]: [character_stats[_cid].get(_stat_name, 0)]" min_width 190 style "debug_tool_body"
@@ -860,7 +862,7 @@ screen debug_tools_characters():
                         textbutton "+1" action Function(debug_add_character_stat, _cid, _stat_name, 1) style "debug_tool_small_button" text_style "debug_tool_small_button_text"
                         textbutton "+5" action Function(debug_add_character_stat, _cid, _stat_name, 5) style "debug_tool_small_button" text_style "debug_tool_small_button_text"
                 null height 3
-                for _mood_name in ("happy", "sad", "angry", "nervous"):
+                for _mood_name in MOOD_AXES:
                     hbox:
                         spacing 7
                         text "[_mood_name]: [character_stats[_cid].get('moods', {}).get(_mood_name, 0)]" min_width 190 style "debug_tool_body"

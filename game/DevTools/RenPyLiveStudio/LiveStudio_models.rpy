@@ -6,6 +6,18 @@ init -990 python in live_studio:
     import re
     import time
     import uuid
+    import hashlib
+
+    def stable_capture_id(prefix, *parts):
+        """Builds a repeatable id for runtime-captured objects.
+
+        Runtime capture used to assign UUIDs on every refresh. Frame changes,
+        selection, overrides, and deletes then pointed at objects that no longer
+        existed after the next capture.
+        """
+        source = "\x1f".join(str(part or "") for part in parts)
+        digest = hashlib.sha1(source.encode("utf-8", "replace")).hexdigest()[:16]
+        return "{}_{}".format(safe_identifier(prefix, "capture"), digest)
 
     def new_id(prefix):
         return "{}_{}".format(prefix, uuid.uuid4().hex[:12])
@@ -17,6 +29,24 @@ init -990 python in live_studio:
             text = fallback
         if text[0].isdigit():
             text = "_" + text
+        return text
+
+    def safe_display_text(value, limit=None, escape_interpolation=True):
+        """Escapes user/runtime text before it is used as Ren'Py UI markup.
+
+        Screen-language textbuttons enable interpolation by default. Captured
+        values such as ``Stamina: [stamina]/[get_max_stamina()]`` may be
+        truncated for a tree label and otherwise leave an unmatched ``[`` that
+        crashes the whole editor. Curly braces are always escaped so captured
+        text cannot accidentally become a Ren'Py text tag. Displayables created
+        with ``substitute=False`` can disable only the square-bracket escaping.
+        """
+        text = str("" if value is None else value)
+        if limit is not None and len(text) > int(limit):
+            text = text[:max(0, int(limit) - 1)] + "…"
+        text = text.replace("{", "{{")
+        if escape_interpolation:
+            text = text.replace("[", "[[")
         return text
 
     def clone(value):
@@ -75,6 +105,8 @@ init -990 python in live_studio:
                 "grid_size": GRID_SIZE,
                 "guides_enabled": GUIDES_ENABLED,
                 "show_all_bounds": SHOW_ALL_BOUNDS,
+                "ui_capture_filter_engine_screens": UI_CAPTURE_FILTER_ENGINE_SCREENS,
+                "ui_capture_include_dialogue_screens": UI_CAPTURE_DIALOGUE_SCREENS,
                 "asset_browser_mode": "tree",
                 "layer_panel_mode": "Scene",
             },

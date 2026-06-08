@@ -3,17 +3,150 @@
 init -960 python in live_studio:
     import ast as _py_ast
     import re as _ui_re
+    import os as _ui_os
+    import copy as _ui_copy
 
     try:
         from renpy.display.screen import ScreenDisplayable
     except Exception:
         ScreenDisplayable = ()
 
+    class FrozenRuntimeDisplayable(renpy.Displayable):
+        """A non-interactive render snapshot of one captured runtime screen.
+
+        The original runtime screen tree can contain DynamicDisplayables, text
+        substitutions, and screen-language functions that re-run at interaction
+        boundaries. Live Studio only needs the pixels that were active when the
+        editor opened. Caching the first Render keeps untouched gameplay UI
+        visually stable while scene objects are edited and prevents a copied
+        screen from losing imagebutton states or evaluating against editor scope.
+        """
+
+        def __init__(self, child, offered_width=None, offered_height=None, **properties):
+            super(FrozenRuntimeDisplayable, self).__init__(**properties)
+            self.child = child
+            self.offered_width = int(offered_width or config.screen_width)
+            self.offered_height = int(offered_height or config.screen_height)
+            self._frozen_render = None
+            self._freeze_error = None
+
+        def freeze(self):
+            if self._frozen_render is not None or self.child is None:
+                return self._frozen_render
+            try:
+                self._frozen_render = renpy.render(
+                    self.child, self.offered_width, self.offered_height, 0.0, 0.0
+                )
+            except Exception as exc:
+                self._freeze_error = repr(exc)
+            return self._frozen_render
+
+        def render(self, width, height, st, at):
+            frozen = self.freeze()
+            if frozen is None:
+                return renpy.Render(max(1, int(width)), max(1, int(height)))
+            try:
+                render_width, render_height = frozen.get_size()
+            except Exception:
+                render_width, render_height = self.offered_width, self.offered_height
+            result = renpy.Render(max(1, int(render_width)), max(1, int(render_height)))
+            result.blit(frozen, (0, 0))
+            return result
+
+        def visit(self):
+            # The cached Render is drawn explicitly. Returning the source child
+            # would cause Ren'Py to call per_interact on the captured game UI.
+            return []
+
+    def freeze_runtime_displayable(displayable):
+        if displayable is None:
+            return None
+        frozen = FrozenRuntimeDisplayable(displayable, config.screen_width, config.screen_height)
+        if frozen.freeze() is None:
+            log_diagnostic("warning", "Runtime screen could not be frozen", frozen._freeze_error or {})
+            return displayable
+        return frozen
+
     KNOWN_RENPY_ACTIONS = {
         "Jump", "Call", "Return", "Show", "Hide", "ToggleScreen", "ShowMenu",
         "SetVariable", "SetField", "ToggleVariable", "ToggleField", "Play",
         "Stop", "Queue", "If", "Confirm", "NullAction", "Function",
     }
+
+
+    def _screen_source_path(screen_displayable):
+        location = getattr(getattr(screen_displayable, "screen", None), "location", None)
+        if isinstance(location, (tuple, list)) and location:
+            location = location[0]
+        return str(location or "").replace("\\", "/").lower()
+
+    def _source_is_renpy_engine_screen(source_path):
+        value = str(source_path or "").replace("\\", "/").lower()
+        if not value:
+            return False
+        return (
+            "/renpy/common/" in value
+            or value.startswith("renpy/common/")
+            or "/renpy/screens/" in value
+            or value.startswith("renpy/screens/")
+            or "/renpy/display/" in value
+            or value.startswith("renpy/display/")
+        )
+
+    def _source_is_project_developer_screen(source_path):
+        value = str(source_path or "").replace("\\", "/").lower()
+        if not value:
+            return False
+        developer_segments = (
+            "/devtools/", "/developer/", "/debug/", "/debugger/",
+            "/tools/debug", "/engine/debug",
+        )
+        return any(segment in value for segment in developer_segments)
+
+    def _screen_capture_decision(screen_name, screen_displayable, layer):
+        lowered = str(screen_name or "").lower()
+        if lowered.startswith("live_studio"):
+            return False, "live_studio_self"
+        if getattr(screen_displayable, "child", None) is None:
+            return False, "inactive_no_child"
+
+        role = _screen_role(screen_name)
+        include_dialogue = bool(project_setting("ui_capture_include_dialogue_screens", UI_CAPTURE_DIALOGUE_SCREENS))
+        if role in ("say", "choice") and not include_dialogue:
+            return False, "dialogue_presentation_managed_separately"
+
+        filter_engine = bool(project_setting("ui_capture_filter_engine_screens", UI_CAPTURE_FILTER_ENGINE_SCREENS))
+        if not filter_engine:
+            return True, "filter_disabled"
+
+        if lowered in UI_CAPTURE_EXCLUDED_SCREEN_NAMES:
+            return False, "excluded_name"
+        for pattern in globals().get("UI_CAPTURE_EXCLUDED_SCREEN_PATTERNS", ()):
+            if pattern and str(pattern).lower() in lowered:
+                return False, "excluded_pattern:{}".format(pattern)
+
+        source_path = _screen_source_path(screen_displayable)
+        if _source_is_renpy_engine_screen(source_path):
+            if role in UI_CAPTURE_ALLOWED_COMMON_ROLES:
+                return True, "allowed_gameplay_common"
+            return False, "renpy_engine_source"
+        if _source_is_project_developer_screen(source_path):
+            return False, "project_developer_source"
+        return True, "active_project_screen"
+
+    def _screen_should_capture(screen_name, screen_displayable, layer):
+        return _screen_capture_decision(screen_name, screen_displayable, layer)[0]
+
+    def _is_primary_dialogue_presentation(screen_name):
+        lowered = str(screen_name or "").strip().lower()
+        names = {"say", "choice"}
+        try:
+            configured = getattr(config, "say_screen_name", None)
+            if configured:
+                names.add(str(configured).strip().lower())
+        except Exception:
+            pass
+        return lowered in names
 
     def screen_name_from_displayable(displayable, fallback="screen"):
         value = getattr(displayable, "screen_name", None)
@@ -412,15 +545,35 @@ init -960 python in live_studio:
             return {"mode": "expression", "expression": expression, "source_expression": expression, "preview": resolved}, resolved
         return {"mode": "runtime", "expression": "", "source_expression": "", "preview": resolved}, resolved
 
-    def _internal_wrapper(node_type, widget_id, actions, children, displayable):
+    def _neutral_runtime_wrapper(node_type, widget_id, actions, children, displayable, placement=None, measured=None):
+        """Returns True only for anonymous wrappers that add no authored layout.
+
+        Ren'Py inserts Fixed/MultiBox/Transform helpers around conditions and
+        screen roots. Exposing them produces full-screen selectable boxes such
+        as ``HUD Root`` or invisible debug roots. We flatten only wrappers with
+        no id, action, background, clipping, or non-default transform so child
+        coordinates remain valid.
+        """
         if widget_id or actions or not children:
             return False
+        node_type = str(node_type or "").lower()
         runtime_name = displayable.__class__.__name__.lower()
+        if runtime_name in ("showif", "condition_switch", "conditionswitch", "dynamicdisplayable", "imagemapcache"):
+            return True
+        placement = placement or {}
+        transform_keys = {
+            "xpos", "ypos", "xanchor", "yanchor", "xalign", "yalign",
+            "xoffset", "yoffset", "rotate", "zoom", "xzoom", "yzoom",
+            "crop", "matrixtransform", "perspective",
+        }
+        for key in transform_keys:
+            value = placement.get(key)
+            if value in (None, 0, 0.0, 1, 1.0, False):
+                continue
+            return False
         if node_type in ("transform", "custom"):
             return True
-        # Ren'Py inserts several anonymous layout wrappers around screen
-        # statements. Keep explicit containers, flatten anonymous engine ones.
-        if runtime_name in ("showif", "condition_switch", "dynamicdisplayable", "imagemapcache"):
+        if node_type == "fixed" and runtime_name in ("fixed", "multibox"):
             return True
         return False
 
@@ -445,7 +598,31 @@ init -960 python in live_studio:
             result["image"] = image_name
         return result, binding
 
-    def capture_ui_nodes(displayable, reverse_map, render_bounds, source_metadata, screen_name, layer, depth, counter, ancestors):
+    def _captured_bounds_union(children):
+        rects = [child.get("bounds") for child in children if child.get("bounds")]
+        if not rects:
+            return None
+        left = min(float(rect.get("x", 0)) for rect in rects)
+        top = min(float(rect.get("y", 0)) for rect in rects)
+        right = max(float(rect.get("x", 0)) + float(rect.get("width", 0)) for rect in rects)
+        bottom = max(float(rect.get("y", 0)) + float(rect.get("height", 0)) for rect in rects)
+        return {"x": left, "y": top, "width": max(1.0, right-left), "height": max(1.0, bottom-top)}
+
+    def _captured_node_is_meaningful(node_type, measured, child_nodes, actions, properties):
+        if child_nodes:
+            return True
+        # A runtime leaf is only gameplay UI when it actually participated in
+        # the captured render. visit() also exposes prediction/inactive branches.
+        if measured is None:
+            return False
+        node_type = str(node_type or "").lower()
+        if node_type in ("text", "image", "add", "button", "textbutton", "imagebutton", "bar", "input", "hotspot", "drag"):
+            return True
+        if actions:
+            return True
+        return bool(properties.get("background") or properties.get("foreground") or properties.get("image"))
+
+    def capture_ui_nodes(displayable, reverse_map, render_bounds, source_metadata, screen_name, layer, depth, counter, ancestors, structural_path="0"):
         if displayable is None or id(displayable) in ancestors:
             return []
         if depth > UI_CAPTURE_MAX_DEPTH or counter[0] >= UI_CAPTURE_MAX_NODES:
@@ -459,13 +636,33 @@ init -960 python in live_studio:
         source_meta = _source_meta_for_displayable(source_metadata, widget_id, node_type, displayable)
         actions = displayable_actions(displayable)
         child_nodes = []
-        for child in displayable_children(displayable):
-            child_nodes.extend(capture_ui_nodes(child, reverse_map, render_bounds, source_metadata, screen_name, layer, depth + 1, counter, next_ancestors))
+        for child_index, child in enumerate(displayable_children(displayable)):
+            child_path = "{}.{}".format(structural_path, child_index)
+            child_nodes.extend(capture_ui_nodes(child, reverse_map, render_bounds, source_metadata, screen_name, layer, depth + 1, counter, next_ancestors, child_path))
 
-        # Anonymous engine wrappers add noise and are the primary reason a HUD
-        # used to contain dozens of meaningless "Custom" entries. Flatten them
-        # while retaining their meaningful descendants.
-        if _internal_wrapper(node_type, widget_id, actions, child_nodes, displayable):
+        measured = render_bounds.get(id(displayable))
+        widget_properties = safe_widget_properties(widget_id, screen_name, layer)
+        placement = placement_properties(displayable)
+        properties = clone(widget_properties)
+        for key, value in placement.items():
+            properties.setdefault(key, value)
+        content_properties, binding = _displayable_content_properties(displayable, node_type, source_meta)
+        properties.update({key: value for key, value in content_properties.items() if key not in properties})
+
+        try:
+            runtime_visible = bool(getattr(displayable, "visible", True))
+        except Exception:
+            runtime_visible = True
+        try:
+            runtime_alpha = float(properties.get("alpha", 1.0) if properties.get("alpha") is not None else 1.0)
+        except Exception:
+            runtime_alpha = 1.0
+        if not runtime_visible or runtime_alpha <= 0.0001:
+            return []
+
+        if not _captured_node_is_meaningful(node_type, measured, child_nodes, actions, properties):
+            return []
+        if _neutral_runtime_wrapper(node_type, widget_id, actions, child_nodes, displayable, placement, measured):
             return child_nodes
 
         name = _captured_node_name(widget_id, node_type, displayable, source_meta, counter[0])
@@ -476,31 +673,22 @@ init -960 python in live_studio:
             elif node_type in ("frame", "window"):
                 name = "{} · {}".format(node_type.title(), child_label)
         node = new_ui_node(name, node_type, widget_id)
+        location_key = source_meta.get("location") or ""
+        identity_part = "id:{}".format(widget_id) if widget_id else "path:{}".format(structural_path)
+        node["id"] = stable_capture_id("ui_node", screen_name, layer, identity_part, node_type, location_key)
         node["source"] = {
-            "screen": screen_name,
-            "layer": layer,
-            "runtime_type": displayable.__class__.__name__,
-            "captured_by": "runtime",
-            "location": clone(source_meta.get("location")),
-            "screen_language": clone(source_meta),
+            "screen": screen_name, "layer": layer,
+            "runtime_type": displayable.__class__.__name__, "captured_by": "runtime",
+            "location": clone(source_meta.get("location")), "screen_language": clone(source_meta),
+            "structural_path": structural_path, "rendered_at_capture": measured is not None,
+            "provenance": "runtime_observed",
         }
-        widget_properties = safe_widget_properties(widget_id, screen_name, layer)
-        placement = placement_properties(displayable)
-        properties = clone(widget_properties)
-        for key, value in placement.items():
-            properties.setdefault(key, value)
-        content_properties, binding = _displayable_content_properties(displayable, node_type, source_meta)
-        properties.update({key: value for key, value in content_properties.items() if key not in properties})
         node["properties"] = properties
+        node["captured_properties"] = clone(properties)
         node["resolved_properties"] = clone(placement)
         if binding is not None:
             node["binding"] = binding
-        measured = render_bounds.get(id(displayable))
-        if measured is not None:
-            node["bounds"] = clone(measured)
-        else:
-            width, height = displayable_size(displayable)
-            node["bounds"] = calculate_bounds(placement, width, height, apply_zoom=False)
+        node["bounds"] = clone(measured) if measured is not None else (_captured_bounds_union(child_nodes) or calculate_bounds(placement, *displayable_size(displayable), apply_zoom=False))
         node["actions"] = actions
         node["children"] = child_nodes
         if not widget_id and node_type in ("custom", "transform"):
@@ -517,7 +705,7 @@ init -960 python in live_studio:
         return [node]
 
     def capture_ui_node(displayable, reverse_map, render_bounds, screen_name, layer, depth, counter, ancestors, source_metadata=None):
-        values = capture_ui_nodes(displayable, reverse_map, render_bounds, source_metadata or {}, screen_name, layer, depth, counter, ancestors)
+        values = capture_ui_nodes(displayable, reverse_map, render_bounds, source_metadata or {}, screen_name, layer, depth, counter, ancestors, "0")
         if not values:
             return None
         if len(values) == 1:
@@ -526,8 +714,37 @@ init -960 python in live_studio:
         wrapper["editability"] = "inspect"
         wrapper["selectable"] = False
         wrapper["children"] = values
-        wrapper["source"] = {"screen": screen_name, "layer": layer, "captured_by": "runtime", "synthetic": True}
+        wrapper["bounds"] = _captured_bounds_union(values)
+        wrapper["source"] = {"screen": screen_name, "layer": layer, "captured_by": "runtime", "synthetic": True, "provenance": "runtime_structure"}
         return wrapper
+
+    def _captured_root_is_structural(root_node, screen_name=None):
+        """Treats a transparent screen root as the screen folder itself."""
+        if not root_node:
+            return False
+        source = root_node.get("source") or {}
+        if source.get("synthetic"):
+            return True
+        if root_node.get("actions"):
+            return False
+        if str(root_node.get("type") or "").lower() not in ("fixed", "custom", "transform"):
+            return False
+        props = root_node.get("properties") or {}
+        if props.get("background") or props.get("foreground") or props.get("image"):
+            return False
+        raw_widget_id = str(root_node.get("widget_id") or "").strip()
+        raw_screen_id = str(screen_name or source.get("screen") or "").strip()
+        widget_id = safe_identifier(raw_widget_id, "root").lower().strip("_") if raw_widget_id else ""
+        screen_id = safe_identifier(raw_screen_id, "screen").lower().strip("_") if raw_screen_id else ""
+        structural_ids = {"root", "screen_root", "hud_root"}
+        if screen_id:
+            structural_ids.update((screen_id, screen_id + "_root", screen_id + "root"))
+        if widget_id and widget_id in structural_ids and root_node.get("children"):
+            return True
+        bounds = root_node.get("bounds") or {}
+        area = float(bounds.get("width", 0) or 0) * float(bounds.get("height", 0) or 0)
+        stage_area = float(config.screen_width) * float(config.screen_height)
+        return bool(root_node.get("children")) and area >= stage_area * 0.72
 
     def _screen_role(name):
         lowered = str(name or "").lower()
@@ -592,14 +809,13 @@ init -960 python in live_studio:
     def _apply_widget_override(override, node, current=None):
         current = current or node
         props = current.get("properties", {}) or {}
-        resolved = node.get("resolved_properties", {}) or {}
+        baseline = node.get("captured_properties", {}) or node.get("resolved_properties", {}) or {}
         for key in _WIDGET_PREVIEW_PROPERTIES:
             if key not in props or props.get(key) is None:
                 continue
-            # Preserve the screen's authored/style value until Live Studio has
-            # actually changed the property. This prevents captured styles and
-            # dynamic content from being frozen into runtime overrides.
-            if key in resolved and props.get(key) == resolved.get(key):
+            # Only emit a widget override when Live Studio changed the captured
+            # value. Authored style values and dynamic runtime content remain intact.
+            if key in baseline and props.get(key) == baseline.get(key):
                 continue
             override[key] = props.get(key)
 
@@ -628,78 +844,112 @@ init -960 python in live_studio:
                 for old_key in list(cache.keys())[:-10]:
                     cache.pop(old_key, None)
 
-        drag = runtime.get("drag") or {}
-        if drag.get("captured_screen_id") != screen.get("id") or not drag.get("preview"):
-            return base
-        node, _parent, kind = find_state_item(resolve_frame(), drag.get("item_id"))
-        if kind != "ui_node" or not node or not node.get("widget_id"):
-            return base
-        # Copy only the outer map and selected widget entry. Every other widget
-        # reuses the cached authored/committed override dictionary.
-        result = dict(base)
-        widget_id = str(node.get("widget_id"))
-        selected_override = dict(base.get(widget_id, {}))
-        current = effective_item(node) if "effective_item" in globals() else node
-        _apply_widget_override(selected_override, node, current)
-        result[widget_id] = selected_override
-        return result
+        # Drag previews intentionally do not rebuild runtime ScreenDisplayables.
+        # The selection rectangle follows the pointer and committed UI appears on
+        # mouse-up. This keeps dynamic text, imagebutton states, and project scope
+        # from being re-evaluated thirty times per second inside the editor.
+        return base
+
+    def captured_screen_override_signature(screen):
+        """A stable key containing only Live Studio-authored widget changes.
+
+        Scene edits and selection changes must not invalidate/re-evaluate a
+        captured HUD. The previous cache key used the global state revision, so
+        moving a character rebuilt every edited screen even though none of its
+        widget overrides changed.
+        """
+        values = []
+        if not screen:
+            return tuple(values)
+        for node, _parent, _depth in walk_nodes(screen.get("nodes", [])):
+            widget_id = node.get("widget_id")
+            if not widget_id:
+                continue
+            props = node.get("properties", {}) or {}
+            baseline = node.get("captured_properties", {}) or node.get("resolved_properties", {}) or {}
+            for key in sorted(_WIDGET_PREVIEW_PROPERTIES):
+                if key not in props or props.get(key) is None:
+                    continue
+                value = props.get(key)
+                if key in baseline and value == baseline.get(key):
+                    continue
+                values.append((str(widget_id), str(key), repr(json_safe(value))))
+        return tuple(values)
+
+    def captured_screen_has_overrides(screen):
+        return bool(captured_screen_override_signature(screen))
 
     def captured_screen_preview(screen):
-        """Re-evaluates a captured screen with current widget property overrides.
+        """Returns a static runtime preview, applying committed id overrides once.
 
-        This is the key difference between moving only a selection rectangle and
-        moving the actual UI. Ren'Py's supported widget-property mechanism is
-        used to rebuild the screen in an isolated displayable; the running game
-        screen itself is never mutated.
+        Untouched screens always use the exact frozen render captured when Live
+        Studio opened. An edited source-backed screen is copied with its original
+        scope and widget properties, rendered once, and frozen immediately. It is
+        never re-evaluated because a Scene object moved, selection changed, or an
+        inspector panel restarted the interaction. Captured UI commits visually
+        on mouse-up/property commit rather than rebuilding on every drag event.
         """
         if not screen:
             return None
-        drag = runtime.get("drag") or {}
-        screen_drag_revision = int(runtime.get("drag_revision", 0)) if drag.get("captured_screen_id") == screen.get("id") else 0
-        key = (
-            screen.get("id"),
-            int(runtime.get("state_revision", 0)),
-            screen_drag_revision,
-        )
+        entry = runtime_screen_entry(screen)
+        exact_root = runtime_screen_root(screen)
+        signature = captured_screen_override_signature(screen)
+        if entry is None or not signature:
+            return exact_root
+        capture_serial = (entry or {}).get("capture_serial", runtime.get("capture_serial"))
+        source_frame_id = runtime.get("active_preview_source_frame_id")
+        key = (screen.get("id"), source_frame_id, capture_serial, signature)
         cache = runtime.setdefault("captured_screen_preview_cache", {})
         if key in cache:
             return cache[key]
-        entry = runtime_screen_entry(screen)
-        if entry is None:
-            return runtime_screen_root(screen)
-        definition = entry.get("screen")
-        if definition is None:
-            return entry.get("root")
+        original = entry.get("displayable")
+        if original is None:
+            return exact_root
         try:
-            scope = dict(entry.get("scope", {}) or {})
-            for internal in ("_scope", "_name", "_debug"):
-                scope.pop(internal, None)
-            preview = ScreenDisplayable(
-                definition,
-                None,
-                None,
-                _screen_widget_overrides(screen),
-                scope,
-                transient=False,
-            )
-            cache[key] = preview
-            # Keep only a small number of generations; drag revisions can be
-            # frequent and ScreenDisplayables retain sizable caches.
-            if len(cache) > 12:
-                for old_key in list(cache.keys())[:-8]:
+            try:
+                preview = original.copy()
+            except Exception:
+                preview = _ui_copy.copy(original)
+            preview.widget_properties = _screen_widget_overrides(screen)
+            # Preserve the original screen definition/scope, but force a single
+            # rebuild that consumes the new id properties. The resulting pixels
+            # are frozen below and no longer participate in later interactions.
+            preview.child = None
+            if hasattr(preview, "children"):
+                preview.children = []
+            if hasattr(original, "phase"):
+                preview.phase = original.phase
+            if hasattr(preview, "transient"):
+                preview.transient = False
+            frozen_preview = freeze_runtime_displayable(preview)
+            if frozen_preview is None:
+                frozen_preview = exact_root
+            cache[key] = frozen_preview
+            if len(cache) > 24:
+                for old_key in list(cache.keys())[:-16]:
                     cache.pop(old_key, None)
-            return preview
+            return frozen_preview
         except Exception as exc:
-            log_diagnostic("warning", "Captured screen could not be rebuilt with overrides", {"screen": screen.get("name"), "error": repr(exc)})
-            return entry.get("root")
+            log_diagnostic("warning", "Captured screen copy could not apply overrides; exact root retained", {"screen": screen.get("name"), "error": repr(exc)})
+            return exact_root
 
     def capture_ui_state():
         result = []
         scene_list = scene_lists()
         runtime["ui_displayables"] = {}
+        runtime["widget_displayables"] = {}
         runtime["screen_roots"] = {}
+        runtime["screen_raw_roots"] = {}
+        runtime["screen_frozen_roots"] = {}
         runtime["screen_displayables"] = {}
         runtime["screen_index"] = {}
+        runtime["captured_screen_preview_cache"] = {}
+        runtime["active_screen_ids"] = set()
+        runtime["active_screen_names"] = []
+        runtime["dialogue_presentation_roots"] = []
+        inspected_screens = 0
+        reasons = {}
+        decisions = []
         if scene_list is None or not ScreenDisplayable:
             log_diagnostic("warning", "ScreenDisplayable was unavailable; UI capture was skipped.")
             return result
@@ -723,18 +973,48 @@ init -960 python in live_studio:
                     displayable = None
                 if not isinstance(displayable, ScreenDisplayable):
                     continue
-
+                inspected_screens += 1
                 screen_name = screen_name_from_displayable(displayable, tag)
+                allowed, reason = _screen_capture_decision(screen_name, displayable, layer)
+                decisions.append({
+                    "name": screen_name, "tag": str(tag), "layer": str(layer),
+                    "allowed": bool(allowed), "reason": reason,
+                    "source": _screen_source_path(displayable),
+                })
+                if not allowed:
+                    reasons[reason] = int(reasons.get(reason, 0)) + 1
+                    # Say/choice presentation belongs to Dialogue, not the UI
+                    # hierarchy. Keep an exact frozen visual so entering Editable
+                    # Layout does not make dialogue scenes lose their text box,
+                    # dynamic values, or imagebutton artwork.
+                    if reason == "dialogue_presentation_managed_separately" and _is_primary_dialogue_presentation(screen_name):
+                        presentation_root = getattr(displayable, "child", None)
+                        if presentation_root is not None:
+                            frozen_presentation = freeze_runtime_displayable(presentation_root)
+                            if frozen_presentation is not None:
+                                runtime.setdefault("dialogue_presentation_roots", []).append({
+                                    "id": stable_capture_id("dialogue_presentation", screen_name, tag, layer),
+                                    "name": screen_name, "tag": str(tag), "layer": str(layer),
+                                    "zorder": entry_zorder(entry, index), "root": frozen_presentation,
+                                })
+                    continue
+
+                location = getattr(getattr(displayable, "screen", None), "location", None)
+                location_key = json_safe(location)
                 screen = new_ui_screen(screen_name, layer, tag, entry_zorder(entry, index))
+                screen["id"] = stable_capture_id("ui_screen", screen_name, tag, layer, location_key)
                 screen["managed"] = False
                 screen["role"] = _screen_role(screen_name)
-                location = getattr(getattr(displayable, "screen", None), "location", None)
+                # The stock quick menu is useful to inspect but is rarely meant
+                # to be dragged while composing a story scene. Lock the screen
+                # folder by default; users can unlock it from Layers when needed.
+                if screen["role"] == "quick_menu":
+                    screen["locked"] = True
                 screen["source"] = {
-                    "screen": screen_name,
-                    "layer": layer,
-                    "tag": tag,
-                    "captured_by": "runtime",
-                    "location": json_safe(location),
+                    "screen": screen_name, "layer": layer, "tag": tag,
+                    "captured_by": "runtime", "provenance": "runtime_observed",
+                    "location": location_key, "capture_reason": reason,
+                    "runtime_instance": repr(getattr(displayable, "screen_name", None)),
                 }
                 reverse_map = ui_widget_reverse_map(displayable)
                 source_metadata = _screen_ast_metadata(displayable)
@@ -743,24 +1023,47 @@ init -960 python in live_studio:
                 root = getattr(displayable, "child", None)
                 counter = [0]
                 root_node = capture_ui_node(root, reverse_map, render_bounds, screen_name, layer, 0, counter, set(), source_metadata)
-                if root_node is not None:
-                    if not root_node.get("widget_id") and str(root_node.get("type") or "").lower() in ("fixed", "custom", "transform"):
-                        root_node["name"] = "{} Root".format(_human_widget_name(screen_name) or screen_name)
+                if root_node is None:
+                    reasons["empty_or_inactive"] = int(reasons.get("empty_or_inactive", 0)) + 1
+                    continue
+                if _captured_root_is_structural(root_node, screen_name):
+                    screen["nodes"].extend(root_node.get("children", []))
+                    screen["source"]["root_flattened"] = True
+                    screen["source"]["flattened_root_widget_id"] = root_node.get("widget_id")
+                    screen["source"]["flattened_root_properties"] = clone(root_node.get("properties", {}))
+                else:
                     screen["nodes"].append(root_node)
+                    screen["source"]["root_flattened"] = False
+                if not screen["nodes"]:
+                    reasons["empty_or_inactive"] = int(reasons.get("empty_or_inactive", 0)) + 1
+                    continue
                 screen["editability"] = "limited" if reverse_map else "inspect"
                 result.append(screen)
+                frozen_root = freeze_runtime_displayable(root)
                 runtime["screen_displayables"][screen["id"]] = displayable
-                runtime["screen_roots"][screen["id"]] = root
+                runtime["screen_raw_roots"][screen["id"]] = root
+                runtime["screen_frozen_roots"][screen["id"]] = frozen_root
+                runtime["screen_roots"][screen["id"]] = frozen_root
+                runtime["active_screen_ids"].add(screen["id"])
+                runtime["active_screen_names"].append(screen.get("name"))
                 runtime["screen_index"][screen_runtime_key(screen)] = {
-                    "root": root,
-                    "displayable": displayable,
-                    "screen_id": screen.get("id"),
-                    "scope": getattr(displayable, "scope", {}),
-                    "screen": getattr(displayable, "screen", None),
-                    "tag": getattr(displayable, "tag", None),
-                    "layer": getattr(displayable, "layer", layer),
+                    "root": frozen_root, "raw_root": root, "displayable": displayable, "screen_id": screen.get("id"),
+                    "scope": getattr(displayable, "scope", {}), "screen": getattr(displayable, "screen", None),
+                    "tag": getattr(displayable, "tag", None), "layer": getattr(displayable, "layer", layer),
                     "widget_properties": getattr(displayable, "widget_properties", {}),
+                    "capture_serial": runtime.get("capture_serial"),
+                    "frozen": isinstance(frozen_root, FrozenRuntimeDisplayable),
                 }
+                reasons["captured"] = int(reasons.get("captured", 0)) + 1
+        filtered = max(0, inspected_screens - len(result))
+        runtime["last_ui_capture_filter"] = {
+            "inspected": inspected_screens, "captured": len(result), "filtered": filtered,
+            "filter_enabled": bool(project_setting("ui_capture_filter_engine_screens", UI_CAPTURE_FILTER_ENGINE_SCREENS)),
+            "reasons": reasons, "captured_names": [screen.get("name") for screen in result],
+            "captured_ids": [screen.get("id") for screen in result],
+            "decisions": decisions[-240:],
+        }
+        log_diagnostic("info", "UI capture classified runtime screens", runtime["last_ui_capture_filter"])
         return result
 
     def screen_for_node(state, node_id):
@@ -1037,10 +1340,15 @@ init -960 python in live_studio:
         node["bounds"] = {"x": config.screen_width * 0.5 - 250, "y": config.screen_height * 0.5 - 150, "width": 500, "height": 300}
         return _add_managed_node(node, screen_id, parent_id, "Add UI container")
 
-    def _convert_node_to_managed(node, screen_name, counter, used_widget_ids=None):
+    UI_CONTAINER_TYPES = set(("fixed", "frame", "window", "vbox", "hbox", "grid", "viewport", "vpgrid", "side"))
+
+    def is_ui_container(node):
+        return bool(node and str(node.get("type") or "").lower() in UI_CONTAINER_TYPES)
+
+    def _convert_node_to_managed_in_place(node, screen_name, used_widget_ids=None):
+        """Creates an editor-owned approximation while preserving tree identity."""
         used_widget_ids = used_widget_ids if used_widget_ids is not None else set()
         converted = clone(node)
-        converted["id"] = new_id("ui")
         raw_widget_id = converted.get("widget_id") or converted.get("type") or "widget"
         base_widget_id = safe_identifier(raw_widget_id, "widget")
         widget_id = base_widget_id
@@ -1049,39 +1357,60 @@ init -960 python in live_studio:
             widget_id = "{}_{}".format(base_widget_id, suffix)
             suffix += 1
         used_widget_ids.add(widget_id)
-        counter[0] += 1
         converted["widget_id"] = widget_id
-        supported_types = {"fixed", "frame", "window", "vbox", "hbox", "grid", "viewport", "vpgrid", "text", "button", "textbutton", "image", "add", "imagebutton"}
+        supported_types = {"fixed", "frame", "window", "vbox", "hbox", "grid", "viewport", "vpgrid", "text", "button", "textbutton", "image", "add", "imagebutton", "side"}
         converted["editability"] = "editable" if str(converted.get("type") or "").lower() in supported_types else "limited"
-        converted["source"] = {"created_by": "live_studio", "converted_from": node.get("source", {}), "screen": screen_name}
+        converted["source"] = {"created_by": "live_studio", "converted_from": clone(node.get("source", {})), "screen": screen_name, "provenance": "converted_approximation"}
         converted["actions"] = [clone(action) for action in converted.get("actions", []) if action.get("editable")]
-        managed_children = []
+        children = []
         for child in converted.get("children", []):
             if child.get("internal") and child.get("children"):
                 for grandchild in child.get("children", []):
-                    managed_children.append(_convert_node_to_managed(grandchild, screen_name, counter, used_widget_ids))
+                    children.append(_convert_node_to_managed_in_place(grandchild, screen_name, used_widget_ids))
             elif not child.get("internal"):
-                managed_children.append(_convert_node_to_managed(child, screen_name, counter, used_widget_ids))
-        converted["children"] = managed_children
+                children.append(_convert_node_to_managed_in_place(child, screen_name, used_widget_ids))
+        converted["children"] = children
         converted.pop("internal", None)
         return converted
 
-    def convert_screen_to_managed(screen_id):
-        screen, _parent, kind = find_state_item(resolve_frame(), screen_id)
-        if kind != "ui_screen" or screen.get("managed"):
+    def convert_screen_in_place(screen_id):
+        """Explicitly converts one runtime screen without creating a duplicate."""
+        global project_dirty, selected_item_id, selected_item_kind
+        state = resolve_frame()
+        screen, _parent, kind = find_state_item(state, screen_id)
+        if kind != "ui_screen" or screen is None or screen.get("managed"):
             return screen
-        name = safe_identifier("{}_managed".format(screen.get("name", "screen")), "managed_screen")
-        converted = new_ui_screen(name, "screens", name, screen.get("zorder", 0))
-        converted["managed"] = True
-        converted["editability"] = "editable"
-        converted["role"] = screen.get("role", "screen")
-        converted["source"] = {"created_by": "live_studio", "converted_from": clone(screen.get("source", {}))}
-        counter = [0]
+        frame = current_frame()
+        if frame is None:
+            return screen
+        before = clone(frame.get("changes", {}))
+        screen_name = safe_identifier(screen.get("name", "screen"), "screen")
         used_widget_ids = set()
-        converted["nodes"] = [_convert_node_to_managed(node, name, counter, used_widget_ids) for node in screen.get("nodes", [])]
-        add_change(None, None, converted, root_collection="ui_screens", label="Convert screen to managed")
-        select_item(converted.get("id"), "ui_screen")
-        return converted
+        converted_nodes = [_convert_node_to_managed_in_place(root, screen_name, used_widget_ids) for root in screen.get("nodes", [])]
+        sets = frame.setdefault("changes", {}).setdefault("sets", {}).setdefault(screen.get("id"), {})
+        sets["managed"] = True
+        sets["editability"] = "editable"
+        sets["nodes"] = converted_nodes
+        sets["source"] = {"created_by": "live_studio", "converted_from": clone(screen.get("source", {})), "provenance": "converted_approximation"}
+        after = clone(frame.get("changes", {}))
+        invalidate_resolved_cache(True, "runtime UI screen converted explicitly")
+        project_dirty = True
+        _record_frame_change("Convert UI screen approximation", before, after)
+        selected_item_id = screen.get("id")
+        selected_item_kind = "ui_screen"
+        log_diagnostic("warning", "Runtime screen converted to an editor-owned approximation", {"screen": screen.get("name"), "nodes": len(converted_nodes)})
+        restart()
+        return find_state_item(resolve_frame(), screen.get("id"))[0]
+
+    def ensure_ui_node_editable(node_id):
+        """Compatibility wrapper. Conversion is now explicit, never automatic."""
+        state = resolve_frame()
+        screen = screen_for_node(state, node_id)
+        if screen is None:
+            return None
+        if not screen.get("managed"):
+            return None
+        return find_state_item(state, node_id)[0]
 
     def primary_action(node):
         actions = node.get("actions", []) if node else []
