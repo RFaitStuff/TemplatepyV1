@@ -1,186 +1,117 @@
 ﻿I'm sorry, but an uncaught exception occurred.
 
 While running game code:
-  File "game/script.rpy", line 27, in script
-    call screen location_nav(npcs_here=npcs_here())
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_bootstrap.rpy", line 99, in open_editor_in_new_context
-    renpy.invoke_in_new_context(open_editor, _clear_layers=False)
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_bootstrap.rpy", line 77, in open_editor
-    renpy.call_screen("live_studio_editor", _with_none=False)
-    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 191, in execute
-    screen live_studio_editor():
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 191, in execute
-    screen live_studio_editor():
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 229, in execute
-    frame:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 236, in execute
-    vbox:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 247, in execute
-    frame:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 252, in execute
-    use live_studio_hierarchy
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 584, in execute
-    screen live_studio_hierarchy():
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 584, in execute
-    screen live_studio_hierarchy():
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 587, in execute
-    vbox:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 600, in execute
-    viewport:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 606, in execute
-    vbox:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 609, in execute
-    for row in rows:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 615, in execute
-    hbox:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 624, in execute
-    textbutton "{} {}".format(row_icon, item.get("name", item.get("type", row_kind))) action Function(live_studio.select_item, item.get("id"), row_kind) selected live_studio.selected_item_id == item.get("id") style "live_studio_tree_button"
-Exception: String ' Text · "Stamina: [stamina]/[get_max_stami' ends with an open format operation.
+  File "game/Game/_Data/Quests.rpy", line 8, in script
+    init 5 python:
+  File "game/Game/_Data/Quests.rpy", line 9, in <module>
+    char_quest(
+    ~~~~~~~~~~^
+        "meet_alice",
+        ^^^^^^^^^^^^^
+    ...<18 lines>...
+        ],
+        ^^
+    )
+    ^
+  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 208, in char_quest
+    return define_quest(qid, **kwargs)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 193, in define_quest
+    _quest_state(qid)
+    ~~~~~~~~~~~~^^^^^
+  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 170, in _quest_state
+    state = quest_states.setdefault(qid, {})
+            ^^^^^^^^^^^^                    
+NameError: name 'quest_states' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "game/Game/_Data/Quests.rpy", line 8, in script
+    init 5 python:
+  File "game/Game/_Data/Quests.rpy", line 8, in script
+    init 5 python:
+  File "game/Engine/Images/Show_NPC.rpy", line 207, in _sync_visible_npcs_from_shown
+    for c in list(_visible_npcs.keys()):
+                  ^^^^^^^^^^^^^         
+NameError: name '_visible_npcs' is not defined
 
 -- Full Traceback ------------------------------------------------------------
 
 Traceback (most recent call last):
-  File "game/script.rpy", line 27, in script
-    call screen location_nav(npcs_here=npcs_here())
-  File "renpy/ast.py", line 2242, in execute
-    self.call("execute")
-    ~~~~~~~~~^^^^^^^^^^^
-  File "renpy/ast.py", line 2196, in call
-    return renpy.statements.call(method, parsed, *args, **kwargs)
-           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/statements.py", line 381, in call
-    return method(parsed, *args, **kwargs)
-           ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/common/000statements.rpy", line 695, in execute_call_screen
-    store._return = renpy.call_screen(name, *args, **kwargs)
-                    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/exports/statementexports.py", line 348, in call_screen
-    rv = renpy.ui.interact(mouse="screen", type="screen", roll_forward=roll_forward)
-         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/ui.py", line 306, in interact
-    rv = renpy.game.interface.interact(roll_forward=roll_forward, **kwargs)
-         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/display/core.py", line 2164, in interact
-    repeat, rv = self.interact_core(
-                 ~~~~~~~~~~~~~~~~~~^
-        preloads=preloads,
-        ^^^^^^^^^^^^^^^^^^
-    ...<4 lines>...
-        **kwargs,
-        ^^^^^^^^^
+  File "game/Game/_Data/Quests.rpy", line 8, in script
+    init 5 python:
+  File "renpy/ast.py", line 1187, in execute
+    renpy.python.py_exec_bytecode(self.code.bytecode, self.hide, store=self.store)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/python.py", line 1276, in py_exec_bytecode
+    exec(bytecode, globals, locals)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "game/Game/_Data/Quests.rpy", line 9, in <module>
+    char_quest(
+    ~~~~~~~~~~^
+        "meet_alice",
+        ^^^^^^^^^^^^^
+    ...<18 lines>...
+        ],
+        ^^
     )
     ^
-  File "renpy/display/core.py", line 3264, in interact_core
-    rv = root_widget.event(ev, x, y, 0)
-         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
-  File "renpy/display/layout.py", line 1281, in event
-    rv = i.event(ev, x - xo, y - yo, cst)
-         ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/display/behavior.py", line 559, in event
-    rv = run(action)
-         ~~~^^^^^^^^
-  File "renpy/display/behavior.py", line 411, in run
-    return action(*args, **kwargs)
-           ~~~~~~^^^^^^^^^^^^^^^^^
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_bootstrap.rpy", line 99, in open_editor_in_new_context
-    renpy.invoke_in_new_context(open_editor, _clear_layers=False)
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 208, in char_quest
+    return define_quest(qid, **kwargs)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 193, in define_quest
+    _quest_state(qid)
+    ~~~~~~~~~~~~^^^^^
+  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 170, in _quest_state
+    state = quest_states.setdefault(qid, {})
+            ^^^^^^^^^^^^                    
+NameError: name 'quest_states' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "renpy/bootstrap.py", line 401, in bootstrap
+    renpy.main.main()
+    ~~~~~~~~~~~~~~~^^
+  File "renpy/main.py", line 488, in main
+    node.execute_init()
+    ~~~~~~~~~~~~~~~~~^^
+  File "renpy/ast.py", line 1071, in execute_init
+    renpy.game.context().run(self.block[0])
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "game/Game/_Data/Quests.rpy", line 8, in script
+    init 5 python:
+  File "game/Game/_Data/Quests.rpy", line 8, in script
+    init 5 python:
+  File "renpy/display/error.py", line 135, in report_exception
+    renpy.game.invoke_in_new_context(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        call_exception_screen,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        ignore_action=ignore_action,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
   File "renpy/game.py", line 285, in invoke_in_new_context
     return callable(*args, **kwargs)
            ~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_bootstrap.rpy", line 77, in open_editor
-    renpy.call_screen("live_studio_editor", _with_none=False)
-    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/exports/statementexports.py", line 348, in call_screen
-    rv = renpy.ui.interact(mouse="screen", type="screen", roll_forward=roll_forward)
-         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/display/error.py", line 44, in call_exception_screen
+    return renpy.ui.interact(mouse="screen", type="screen", suppress_overlay=True, suppress_underlay=True)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "renpy/ui.py", line 306, in interact
     rv = renpy.game.interface.interact(roll_forward=roll_forward, **kwargs)
          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/display/core.py", line 2164, in interact
-    repeat, rv = self.interact_core(
-                 ~~~~~~~~~~~~~~~~~~^
-        preloads=preloads,
-        ^^^^^^^^^^^^^^^^^^
-    ...<4 lines>...
-        **kwargs,
-        ^^^^^^^^^
-    )
-    ^
-  File "renpy/display/core.py", line 2710, in interact_core
-    root_widget.visit_all(lambda d: d.per_interact())
-    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/display/displayable.py", line 460, in visit_all
-    d.visit_all(callback, seen)
-    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
-  File "renpy/display/displayable.py", line 460, in visit_all
-    d.visit_all(callback, seen)
-    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
-  File "renpy/display/displayable.py", line 460, in visit_all
-    d.visit_all(callback, seen)
-    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
-  File "renpy/display/screen.py", line 503, in visit_all
-    callback(self)
-    ~~~~~~~~^^^^^^
-  File "renpy/display/core.py", line 2710, in <lambda>
-    root_widget.visit_all(lambda d: d.per_interact())
-                                    ~~~~~~~~~~~~~~^^ 
-  File "renpy/display/screen.py", line 514, in per_interact
-    self.update()
-    ~~~~~~~~~~~^^
-  File "renpy/display/screen.py", line 715, in update
-    self.screen.function(**self.scope)
-    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 191, in execute
-    screen live_studio_editor():
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 191, in execute
-    screen live_studio_editor():
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 229, in execute
-    frame:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 236, in execute
-    vbox:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 247, in execute
-    frame:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 252, in execute
-    use live_studio_hierarchy
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 584, in execute
-    screen live_studio_hierarchy():
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 584, in execute
-    screen live_studio_hierarchy():
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 587, in execute
-    vbox:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 600, in execute
-    viewport:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 606, in execute
-    vbox:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 609, in execute
-    for row in rows:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 615, in execute
-    hbox:
-  File "game/DevTools/RenPyLiveStudio/LiveStudio_screens.rpy", line 624, in execute
-    textbutton "{} {}".format(row_icon, item.get("name", item.get("type", row_kind))) action Function(live_studio.select_item, item.get("id"), row_kind) selected live_studio.selected_item_id == item.get("id") style "live_studio_tree_button"
-  File "renpy/ui.py", line 1003, in _textbutton
-    text = renpy.text.text.Text(label, style=text_style, substitute=substitute, scope=scope, **text_kwargs)
-           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/text/text.py", line 2223, in __init__
-    self.set_text(text, scope, substitute)  # type: ignore
-    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^                
-  File "renpy/text/text.py", line 2362, in set_text
-    i, did_sub = renpy.substitutions.substitute(i, scope, substitute)  # type: ignore
-                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^                
-  File "renpy/substitutions.py", line 355, in substitute
-    s = interpolate(s, variables)  # type: ignore
-        ~~~~~~~~~~~^^^^^^^^^^^^^^                
-  File "renpy/substitutions.py", line 52, in interpolate
-    for lit, expr, conv, fmt in parse(s):
-                                ~~~~~^^^ 
-  File "renpy/substitutions.py", line 255, in parse
-    raise Exception("String {!r} ends with an open format operation.".format(s))
-Exception: String ' Text · "Stamina: [stamina]/[get_max_stami' ends with an open format operation.
+  File "renpy/display/core.py", line 2149, in interact
+    i()
+    ~^^
+  File "game/Engine/Images/Show_NPC.rpy", line 207, in _sync_visible_npcs_from_shown
+    for c in list(_visible_npcs.keys()):
+                  ^^^^^^^^^^^^^         
+NameError: name '_visible_npcs' is not defined
 
 Windows-11-10.0.26200-SP0 AMD64
 Ren'Py 8.5.3.26042304+nightly
 Project Tac 1.0
-Sun Jun  7 10:59:11 2026
+Tue Jun  9 12:59:01 2026

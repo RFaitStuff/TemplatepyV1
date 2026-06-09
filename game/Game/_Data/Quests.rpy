@@ -68,7 +68,3 @@ init 5 python:
             },
         ],
     )
-
-
-label _register_all_quests:
-    return
