@@ -30,7 +30,7 @@ init 10 python:
         "ch1_followup",
         kind="extra",
         label="alice_ch1_followup",
-        available_if=(lambda: has_flag("ch1_intro_seen") and not has_flag("ch1_followup_done")),
+        requires=req("flag:ch1_intro_seen", "unless:ch1_followup_done"),
         cooldown_days=0,
     )
     register_character_talk(
@@ -58,4 +58,7 @@ init 10 python:
     register_character_interact("alice", "default", "alice_default_interact")
     register_character_interact("alice", "art_room", "alice_art_room_interact", locations="art_room", priority=5)
     register_character_interact("alice", "club_room", "alice_club_room_interact", locations="club_room", priority=5)
+    register_character_interact("alice", "roof_signal", "alice_roof_signal", locations="roof", requires="flag:read_noticeboard", group="alice_signal", once=True, completion_flag="alice_roof_signal_done", priority=20)
+    register_character_interact("alice", "roof_aftercare", "alice_roof_aftercare", locations="roof", requires="flag:alice_roof_signal_done", group="alice_signal", once=True, completion_flag="alice_roof_aftercare_done", priority=18)
+    register_character_interact("alice", "private_signal_scene", "alice_private_signal_scene", locations="roof", group="alice_signal", special=True, completion_flag="alice_private_signal_scene_done", priority=100)
 

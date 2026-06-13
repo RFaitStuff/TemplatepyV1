@@ -7,19 +7,23 @@
 # =============================================================================
 
 init python:
-    register_gallery_scene(
-        gallery_id="alice_first_meet",
+    gallery_scene(
+        "alice_first_meet",
         title="First Meeting",
-        label="alice_first_meet",
         thumbnail="bg classroom1",
         group="Memories",
+        character="alice",
+        unlock="flag:alice_first_meet_seen",
     )
 
 
 label alice_first_meet:
     scene bg classroom1
+    $ dialog_mode("phone_message", contact="alice", side="left", body="Meet me in homeroom?")
     $ show_npc("alice", pos=(0.5, 1.0))
     a "...do I know you?"
     "(A memory. Or a re-introduction. Hard to tell, this early in the day.)"
     a "Either way - hi."
+    $ set_flag("alice_first_meet_seen")
+    $ clear_dialog_mode()
     return

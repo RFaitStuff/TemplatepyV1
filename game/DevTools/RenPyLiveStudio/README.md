@@ -1,4 +1,4 @@
-# Ren'Py Live Studio — Visual Engine v3.3.1
+﻿# Ren'Py Live Studio - Visual Engine v3.6.0
 
 Ren'Py Live Studio is an in-game visual authoring tool for Ren'Py. It captures the current running game, opens a modal editor over it, and lets you create inherited story frames, scene visuals, UI screens, dialogue, choices, button behavior, and flow without having to hand-write the initial Ren'Py script.
 
@@ -11,17 +11,25 @@ Ren'Py Live Studio is an in-game visual authoring tool for Ren'Py. It captures t
 
 Disable `ENABLED` in `LiveStudio_config.rpy`, or remove the folder, before shipping a public build.
 
+## Extension layer
+
+Live Studio has a lightweight extension registry. The core editor stays portable for normal Ren'Py projects, while project-specific engines can add their own bottom-workspace tab, commands, validation, and generated code snippets.
+
+The bundled Project Tac extension appears only when the current project exposes `project_save_id = "project_tac"`. It can refresh Project Tac registries, validate quest targets, generate `location_package`, `object_spot`, `create_quest`, dialogue, branch, and parallax-ready snippets, and turn the selected canvas bounds into an editable interactable starter.
+
+This keeps the base editor useful for almost any Ren'Py project while letting Project Tac behave more like a game-design engine layered on top of the normal Ren'Py runtime.
+
 ## Project model
 
 ```text
 Project
-└── Frame
-    ├── Scenes
-    │   ├── Master / Exploration
-    │   ├── Dialogue
-    │   └── Effects / custom scene layers
-    ├── Dialogue object
-    └── UI screens
+â””â”€â”€ Frame
+    â”œâ”€â”€ Scenes
+    â”‚   â”œâ”€â”€ Master / Exploration
+    â”‚   â”œâ”€â”€ Dialogue
+    â”‚   â””â”€â”€ Effects / custom scene layers
+    â”œâ”€â”€ Dialogue object
+    â””â”€â”€ UI screens
 ```
 
 A Frame is a story state, not an animation timestamp. The normal **Next Frame** operation inherits the current frame and stores only local differences.
@@ -41,7 +49,7 @@ The editor shell now follows the supplied modern dark mockup while retaining the
 - **Bottom right:** Select, Move, Scale, Rotate, object editing, arrangement, locking, undo/redo, and a compact Add popup that preserves the original Scene/UI/dialogue/frame creation commands.
 - **Popups:** Project, Settings, Create, and Extract Script open over the editor instead of replacing the asset workspace.
 
-All editor scrollbars remain narrow, and the layout scales from common 1280×720 projects through 1920×1080 projects.
+All editor scrollbars remain narrow, and the layout scales from common 1280Ã—720 projects through 1920Ã—1080 projects.
 
 ## v3.3 future-frame discovery
 
@@ -75,7 +83,7 @@ This remains a conservative static preview. Dynamic Python expressions, runtime-
 ### Direct scene and UI manipulation
 
 - **Select mode now drags objects**, matching the original editor.
-- Beginning a move/resize/rotate automatically switches the static Exact Capture to Editable Layout, so the visual object—not only its selection outline—follows the pointer.
+- Beginning a move/resize/rotate automatically switches the static Exact Capture to Editable Layout, so the visual objectâ€”not only its selection outlineâ€”follows the pointer.
 - The selection outline, actual scene image, and editable UI widget use the same transient drag state.
 - Corner/edge handles resize from the selected side.
 - The upper handle rotates.

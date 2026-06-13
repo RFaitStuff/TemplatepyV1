@@ -20,6 +20,10 @@
 #   {glitch}...{/glitch}    - rapid color/style flicker; respects accessibility
 #                             toggle persistent.text_glitch_disabled.
 #
+#   Aliases: {wave} = {bt}, {shake} = {sc}, {fade} = {fi}
+#   {swell}...{/swell}      - soft scale pulse
+#   {rainbow}...{/rainbow}  - gentle color cycling
+#
 #   You can MIX any of these inside a normal say-line. Example:
 #       a "I'm fine. {sc=4}I'm fine. I'm fine.{/sc}"
 #       a "{fi}It's good to see you again.{/fi}"
@@ -31,7 +35,7 @@
 
 
 default persistent.text_glitch_disabled = False
-define  text_effects_enabled = True
+default text_effects_enabled = True
 
 
 init python:
@@ -127,6 +131,48 @@ init python:
             return [self.child]
 
 
+    class _SwellText(renpy.Displayable):
+        def __init__(self, child, **kw):
+            super(_SwellText, self).__init__(**kw)
+            self.child = child
+
+        def render(self, w, h, st, at):
+            z = 1.0 + 0.08 * (0.5 + 0.5 * _math.sin(st * 3.5))
+            tr = Transform(child=self.child, zoom=z)
+            cr = renpy.render(tr, w, h, st, at)
+            cw, ch = cr.get_size()
+            rv = renpy.Render(cw, ch)
+            rv.subpixel_blit(cr, (0, 0))
+            renpy.redraw(self, 0)
+            return rv
+
+        def visit(self):
+            return [self.child]
+
+
+    class _RainbowText(renpy.Displayable):
+        _palette = ["#ff8de7", "#ffd27a", "#7fdf9c", "#7fb3ff", "#cfb1ff"]
+
+        def __init__(self, raw, idx=0, **kw):
+            super(_RainbowText, self).__init__(**kw)
+            self.raw = raw
+            self.idx = idx
+            self.child = renpy.text.text.Text(raw)
+
+        def render(self, w, h, st, at):
+            pos = int((st * 5.0 + self.idx) % len(self._palette))
+            self.child.set_text("{color=%s}%s{/color}" % (self._palette[pos], self.raw))
+            cr = renpy.render(self.child, w, h, st, at)
+            cw, ch = cr.get_size()
+            rv = renpy.Render(cw, ch)
+            rv.subpixel_blit(cr, (0, 0))
+            renpy.redraw(self, 0)
+            return rv
+
+        def visit(self):
+            return [self.child]
+
+
     class _GlitchText(renpy.Displayable):
         _palette = ["#ffffff", "#ff5fa2", "#7fdf9c", "#ffd27a", "#7fb3ff"]
 
@@ -207,6 +253,30 @@ init python:
                 out.append((kind, text))
         return out
 
+    def _swell_tag(tag, arg, contents):
+        out = []
+        for kind, text in contents:
+            if kind == renpy.TEXT_TEXT and text_effects_enabled:
+                out.append((renpy.TEXT_DISPLAYABLE, _SwellText(renpy.text.text.Text(text))))
+            else:
+                out.append((kind, text))
+        return out
+
+    def _rainbow_tag(tag, arg, contents):
+        out = []
+        idx = 0
+        for kind, text in contents:
+            if kind == renpy.TEXT_TEXT and text_effects_enabled:
+                for ch in text:
+                    if ch == " ":
+                        out.append((renpy.TEXT_TEXT, ch))
+                    else:
+                        out.append((renpy.TEXT_DISPLAYABLE, _RainbowText(ch, idx)))
+                        idx += 1
+            else:
+                out.append((kind, text))
+        return out
+
 
     config.custom_text_tags = config.custom_text_tags or {}
     config.custom_text_tags["bt"]     = _bt_tag
@@ -214,3 +284,8 @@ init python:
     config.custom_text_tags["fi"]     = _fi_tag
     config.custom_text_tags["pulse"]  = _pulse_tag
     config.custom_text_tags["glitch"] = _glitch_tag
+    config.custom_text_tags["wave"]   = _bt_tag
+    config.custom_text_tags["shake"]  = _sc_tag
+    config.custom_text_tags["fade"]   = _fi_tag
+    config.custom_text_tags["swell"]  = _swell_tag
+    config.custom_text_tags["rainbow"] = _rainbow_tag

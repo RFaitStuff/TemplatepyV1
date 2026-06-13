@@ -1096,7 +1096,12 @@ init -980 python in live_studio:
         if value == "Export":
             open_script_popup()
             return
-        bottom_tab = value if value in ("Assets", "Dialogue") else "Assets"
+        if value in ("Assets", "Dialogue"):
+            bottom_tab = value
+        elif value.startswith("Extension:") and value.split(":", 1)[1] in extension_defs:
+            bottom_tab = value
+        else:
+            bottom_tab = "Assets"
         restart()
 
     def close_all_popups(restart_ui=True):

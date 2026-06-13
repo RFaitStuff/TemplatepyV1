@@ -70,7 +70,7 @@ init python:
             return
         persistent.branches_seen.add(branch_id)
         try:
-            renpy.save("branch_" + branch_id, "[Branch] " + branch_defs[branch_id]["title"])
+            branch_save_zone(branch_id, branch_defs[branch_id]["title"])
         except Exception:
             pass
 
@@ -119,31 +119,26 @@ init python:
 # Story scripts call branch_point() / take_branch() referencing these ids.
 # =============================================================================
 label _register_all_branches:
-    # No branches are defined yet. The branch system is wired up as a feature
-    # (registry + visualizer + auto-save rewind) but the story is currently
-    # linear. Add register_branch(...) calls below when you want to introduce
-    # a real branching point.
     python:
-        pass
+        register_branch(
+            "archive_evidence_method",
+            title="Archive Evidence Method",
+            choices={
+                "crosscheck": {"title": "Cross-check badge and drive", "label": "archive_terminal_decode"},
+                "isolate": {"title": "Isolate the drive", "label": "archive_terminal_decode"},
+                "direct": {"title": "Decode directly", "label": "archive_terminal_decode"},
+            },
+        )
 
-        # ---- TEMPLATE - uncomment + edit when you actually want a branch ----
-        # register_branch(
-        #     "intro_path",
-        #     title="Opening Path",
-        #     choices={
-        #         "alone": {"title": "Walk alone",     "label": "intro_path_alone"},
-        #         "alice": {"title": "Look for Alice", "label": "intro_path_alice"},
-        #     },
-        # )
-        #
-        # ---- Downstream branch (parent links to a previous branch_id) ----
-        # register_branch(
-        #     "rooftop_promise",
-        #     title="The Rooftop Promise",
-        #     parent="intro_path",
-        #     choices={
-        #         "keep":  {"title": "Keep your word", "label": "rooftop_keep"},
-        #         "break": {"title": "Walk away",      "label": "rooftop_break"},
-        #     },
-        # )
+        register_branch(
+            "bree_cora_route",
+            title="Bree and Cora Route",
+            parent="archive_evidence_method",
+            choices={
+                "bree": {"title": "Back Bree's reconstruction", "label": "quest_bree_cora_choice"},
+                "cora": {"title": "Back Cora's warning", "label": "quest_bree_cora_choice"},
+                "neutral": {"title": "Refuse both readings", "label": "quest_bree_cora_choice"},
+                "both": {"title": "Name both as witnesses", "label": "quest_bree_cora_choice"},
+            },
+        )
     return

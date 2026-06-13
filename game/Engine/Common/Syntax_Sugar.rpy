@@ -166,6 +166,8 @@ init python:
 init 20 python:
     alice = character_handle("alice", character_speakers.get("alice"))
     alex = character_handle("alex", character_speakers.get("alex"))
+    bree = character_handle("bree", character_speakers.get("bree"))
+    cora = character_handle("cora", character_speakers.get("cora"))
     player = character_handle("player")
 
 init python:

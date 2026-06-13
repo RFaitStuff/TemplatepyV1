@@ -13,6 +13,7 @@
 
 
 default character_talk_seen = {}
+default character_interact_completed = set()
 
 
 init -60 python:
@@ -56,6 +57,13 @@ init python:
                     return False
             except Exception:
                 return False
+        requires = entry.get("requires")
+        if requires is not None:
+            try:
+                if not meets_requirements(requires, actor=char):
+                    return False
+            except Exception:
+                return False
         return True
 
     def _talk_cooldown(entry):
@@ -70,6 +78,74 @@ init python:
 
     def _talk_seen_key(char, entry):
         return (char, entry.get("id"))
+
+    def _interact_key(char, entry_or_id):
+        if isinstance(entry_or_id, dict):
+            entry_id = entry_or_id.get("id")
+        else:
+            entry_id = entry_or_id
+        return (char, entry_id)
+
+    def character_interaction_completed(char, entry_or_id):
+        key = _interact_key(char, entry_or_id)
+        if key in character_interact_completed:
+            return True
+        if isinstance(entry_or_id, dict):
+            flag = entry_or_id.get("completion_flag")
+            if flag:
+                try:
+                    return has_flag(flag)
+                except Exception:
+                    return False
+        return False
+
+    def mark_character_interaction_completed(char, entry_or_id):
+        key = _interact_key(char, entry_or_id)
+        if key[1]:
+            character_interact_completed.add(key)
+        if isinstance(entry_or_id, dict):
+            flag = entry_or_id.get("completion_flag")
+            if flag:
+                try:
+                    set_flag(flag)
+                except Exception:
+                    pass
+
+    def character_interaction_group_entries(char, group, include_special=False):
+        entries = []
+        for e in character_interact_entries.get(char, []):
+            if e.get("group") != group:
+                continue
+            if e.get("special") and not include_special:
+                continue
+            if not e.get("required_for_group", True):
+                continue
+            entries.append(e)
+        return entries
+
+    def character_interaction_group_complete(char, group):
+        entries = character_interaction_group_entries(char, group)
+        if not entries:
+            return False
+        return all(character_interaction_completed(char, e) for e in entries)
+
+    def _interact_unlocked(char, entry):
+        if entry.get("once") and character_interaction_completed(char, entry):
+            return False
+        unlocks_after = entry.get("unlocks_after")
+        if unlocks_after is not None:
+            try:
+                if not meets_requirements(unlocks_after, actor=char):
+                    return False
+            except Exception:
+                return False
+        if entry.get("special"):
+            group = entry.get("group")
+            if group and not character_interaction_group_complete(char, group):
+                return False
+            if character_interaction_completed(char, entry):
+                return False
+        return True
 
     def _talk_available_by_cooldown(char, entry):
         cd = _talk_cooldown(entry)
@@ -102,6 +178,7 @@ init python:
         times=None,
         moods=None,
         available_if=None,
+        requires=None,
         cooldown_days=None,
         weight=1,
     ):
@@ -114,6 +191,7 @@ init python:
             "times": times,
             "moods": moods,
             "available_if": available_if,
+            "requires": requires,
             "cooldown_days": cooldown_days,
             "weight": weight,
         }
@@ -127,6 +205,14 @@ init python:
         times=None,
         moods=None,
         available_if=None,
+        requires=None,
+        group=None,
+        special=False,
+        unlocks_after=None,
+        once=False,
+        complete_on_seen=True,
+        completion_flag=None,
+        required_for_group=True,
         priority=0,
     ):
         entry = {
@@ -136,6 +222,14 @@ init python:
             "times": times,
             "moods": moods,
             "available_if": available_if,
+            "requires": requires,
+            "group": group,
+            "special": special,
+            "unlocks_after": unlocks_after,
+            "once": once,
+            "complete_on_seen": complete_on_seen,
+            "completion_flag": completion_flag,
+            "required_for_group": required_for_group,
             "priority": priority,
         }
         return _upsert_registry_entry(character_interact_entries, char, entry)
@@ -189,11 +283,20 @@ init python:
         basics = [e for e in entries if e.get("kind") == "basic"]
         return bool(basics)
 
-    def character_interact_label(char):
-        entries = [e for e in character_interact_entries.get(char, []) if _entry_matches(e, char)]
+    def choose_character_interact(char):
+        entries = [
+            e for e in character_interact_entries.get(char, [])
+            if _entry_matches(e, char) and _interact_unlocked(char, e)
+        ]
         if entries:
             entries.sort(key=lambda e: e.get("priority", 0), reverse=True)
-            return entries[0].get("label")
+            return entries[0]
+        return None
+
+    def character_interact_label(char):
+        entry = choose_character_interact(char)
+        if entry:
+            return entry.get("label")
         label = "interact_" + char
         return label if renpy.has_label(label) else None
 

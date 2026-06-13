@@ -7,15 +7,15 @@
 # =============================================================================
 
 init python:
-    configure_location(
-        "roof",
+    location_package(
+        id="roof",
         positions={
             "alice":  [(0.30, 1.0), (0.45, 1.0)],
             "alex": [(0.70, 1.0), (0.85, 1.0)],
         },
         on_enter="roof_on_enter",
         exits=[
-            {"to": "hallway", "label": "Stairs Down", "pos": (0.06, 0.78), "size": (180, 360)},
+            exit_spot("hallway", label="Stairs Down", pos=(0.06, 0.78), size=(180, 360)),
         ],
     )
 

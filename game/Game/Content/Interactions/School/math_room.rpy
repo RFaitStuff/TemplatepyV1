@@ -3,12 +3,12 @@
 # =============================================================================
 
 init python:
-    configure_location(
-        "math_room",
+    location_package(
+        id="math_room",
         positions={
             "alice": [(0.35, 1.0), (0.65, 1.0)],
         },
         exits=[
-            {"to": "hallway", "label": "Hallway", "pos": (0.05, 0.55), "size": (160, 480)},
+            exit_spot("hallway", label="Hallway", pos=(0.05, 0.55), size=(160, 480)),
         ],
     )

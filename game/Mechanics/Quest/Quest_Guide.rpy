@@ -97,9 +97,14 @@ init python:
             return None
 
     def active_quest_target():
-        # Returns the target dict of the tracked quest, or fallback active quest.
+        # Returns the target dict of the explicitly tracked quest.
+        targets = active_quest_targets()
+        return targets[0] if targets else None
+
+    def active_quest_targets():
+        # Returns normalized target dicts of the explicitly tracked quest.
         if not quest_guide_enabled:
-            return None
+            return []
         tq = None
         try:
             tq = tracked_quest()
@@ -108,28 +113,92 @@ init python:
         if tq:
             t = _first_quest_target(tq)
             if t:
-                t = dict(t)
-                t["_quest"] = tq
-                return t
+                return _normalize_quest_targets(tq, t)
+        return []
 
-        active = []
-        try:
-            active = [q for q in active_quests()]
-        except Exception:
-            return None
-        if not active:
-            return None
-        # Sort: main first, then side, then char/misc; among same category, by id.
-        order = {"main": 0, "side": 1}
-        active.sort(key=lambda q: (order.get(q.category, 5), q.id))
-        for q in active:
-            t = _first_quest_target(q)
-            if t:
-                # Tag the target with the quest itself so the HUD can show its title.
-                t = dict(t)
-                t["_quest"] = q
-                return t
-        return None
+    def _normalize_quest_targets(q, raw_target):
+        if not raw_target:
+            return []
+        raw_targets = raw_target.get("targets") if isinstance(raw_target, dict) else None
+        if raw_targets:
+            inherited = dict(raw_target)
+            inherited.pop("targets", None)
+            out = []
+            for target in raw_targets:
+                merged = dict(inherited)
+                merged.update(target)
+                for normalized in _normalize_quest_targets(q, merged):
+                    if not _target_duplicate(out, normalized):
+                        out.append(normalized)
+            return out
+        t = dict(raw_target)
+        t["_quest"] = q
+        t["_guide_precision"] = _quest_target_precision(q, t)
+        return [t]
+
+    def _target_duplicate(targets, candidate):
+        keys = ("npc", "item", "object", "location", "area")
+        for target in targets:
+            if all(target.get(k) == candidate.get(k) for k in keys):
+                return True
+        return False
+
+    def _quest_target_precision(q, target=None):
+        target = target or {}
+        value = target.get("guide_precision", target.get("tracking", None))
+        if value is None:
+            value = getattr(q, "guide_precision", "exact")
+        value = str(value or "exact").lower()
+        if value in ("off", "hidden", "none"):
+            return "none"
+        if value in ("area", "region"):
+            return "area"
+        if value in ("location", "loc"):
+            return "location"
+        if value in ("characters", "multi_character", "multi-character"):
+            return "characters"
+        return "exact"
+
+    def _target_locations(t):
+        out = []
+        loc = t.get("location")
+        if loc:
+            out.append(loc)
+        npc = t.get("npc")
+        if npc:
+            try:
+                nloc = npc_location(npc)
+                if nloc and nloc not in out:
+                    out.append(nloc)
+            except Exception:
+                pass
+        for cid in (t.get("characters") or []):
+            try:
+                cloc = npc_location(cid)
+                if cloc and cloc not in out:
+                    out.append(cloc)
+            except Exception:
+                pass
+        return out
+
+    def _target_display_name(t):
+        if t.get("npc"):
+            return character_display_name(t.get("npc"))
+        if t.get("characters"):
+            return ", ".join(character_display_name(cid) for cid in t.get("characters") if cid)
+        if t.get("item"):
+            try:
+                return item_name(t.get("item"))
+            except Exception:
+                return str(t.get("item")).replace("_", " ").title()
+        if t.get("object"):
+            obj = get_interactable(t.get("object"))
+            return (obj or {}).get("title") or str(t.get("object")).replace("_", " ").title()
+        if t.get("location"):
+            return location_name(t.get("location"))
+        if t.get("area"):
+            return area_data(t.get("area")).get("name", str(t.get("area")).title())
+        return "Target"
 
     def _first_quest_target(q):
         # First incomplete objective target, else quest-level target.
@@ -143,29 +212,76 @@ init python:
 
     def quest_marker_for_iid(iid):
         # True if the active quest target points at this interactable.
-        t = active_quest_target()
-        if not t:
-            return False
-        return t.get("npc") == iid or t.get("item") == iid or t.get("object") == iid
+        return quest_marker_text_for_iid(iid) is not None
+
+    def quest_marker_text_for_iid(iid):
+        matches = []
+        for t in active_quest_targets():
+            precision = t.get("_guide_precision", "exact")
+            if precision in ("none", "area", "location"):
+                continue
+            if precision == "characters":
+                if iid in (t.get("characters") or []) or t.get("npc") == iid:
+                    matches.append(t)
+            elif t.get("npc") == iid or t.get("item") == iid or t.get("object") == iid:
+                matches.append(t)
+        if not matches:
+            return None
+        if len(matches) > 1:
+            return str(len(matches))
+        return matches[0].get("icon") or "!"
 
     def quest_marker_for_exit(loc_id):
+        return quest_marker_text_for_exit(loc_id) is not None
+
+    def quest_marker_text_for_exit(loc_id):
         t = active_quest_target()
         if not t:
+            return None
+        matches = []
+        for target in active_quest_targets():
+            if _quest_target_points_to_exit(target, loc_id):
+                matches.append(target)
+        if not matches:
+            return None
+        if len(matches) > 1:
+            return str(len(matches))
+        precision = matches[0].get("_guide_precision", "exact")
+        if precision == "area":
+            return "~"
+        if precision == "location":
+            return "?"
+        return matches[0].get("icon") or "!"
+
+    def _quest_target_points_to_exit(t, loc_id):
+        precision = t.get("_guide_precision", "exact")
+        if precision == "none":
             return False
-        target_loc = t.get("location")
-        if not target_loc:
-            npc = t.get("npc")
-            if npc:
-                try:
-                    target_loc = npc_location(npc)
-                except Exception:
-                    target_loc = None
-        if not target_loc or target_loc == current_location:
+        target_locs = _target_locations(t)
+        target_area = t.get("area")
+        if not target_area and target_locs:
+            try:
+                target_area = location_area_id(target_locs[0])
+            except Exception:
+                target_area = None
+
+        if precision == "area":
+            if not target_area or current_area_id() == target_area:
+                return False
+            area_locs = [lid for lid in location_order if location_area_id(lid) == target_area]
+            for target_loc in area_locs:
+                next_step = _path_next_step(current_location, target_loc)
+                if next_step and loc_id == next_step:
+                    return True
             return False
-        next_step = _path_next_step(current_location, target_loc)
-        if not next_step:
-            return False
-        return loc_id == next_step
+
+        for target_loc in target_locs:
+            if not target_loc or target_loc == current_location:
+                continue
+            next_step = _path_next_step(current_location, target_loc)
+            if next_step and loc_id == next_step:
+                return True
+        return False
 
     def character_marker_for_exit(loc_id):
         target_loc = tracked_character_location()
@@ -212,13 +328,35 @@ init python:
 
     def quest_target_label():
         # Short label for the HUD (e.g. "Find Alice"). None if no active target.
-        t = active_quest_target()
-        if not t:
+        targets = active_quest_targets()
+        if not targets:
+            return None
+        t = targets[0]
+        if t.get("_guide_precision") == "none":
             return None
         q = t.get("_quest")
         if q:
             for o in q.objectives:
                 if not o.done and not o.optional:
+                    if len(targets) > 1:
+                        names = [_target_display_name(target) for target in targets[:3]]
+                        suffix = "" if len(targets) <= 3 else " +" + str(len(targets) - 3)
+                        if t.get("_guide_precision") == "area":
+                            return "Search areas: " + ", ".join(names) + suffix
+                        if t.get("_guide_precision") == "location":
+                            return "Search: " + ", ".join(names) + suffix
+                        return "Targets: " + ", ".join(names) + suffix
+                    if t.get("_guide_precision") == "area":
+                        area = t.get("area")
+                        if not area:
+                            locs = _target_locations(t)
+                            area = location_area_id(locs[0]) if locs else None
+                        return "Search: " + area_data(area).get("name", str(area).title()) if area else o.text
+                    if t.get("_guide_precision") == "location":
+                        locs = _target_locations(t)
+                        return "Search: " + location_name(locs[0]) if locs else o.text
+                    if t.get("_guide_precision") == "characters":
+                        return "Find: " + ", ".join(character_display_name(c) for c in (t.get("characters") or [t.get("npc")]) if c)
                     return o.text
             return q.title
         return None

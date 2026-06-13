@@ -70,6 +70,7 @@ label alice_club_room_group_talk:
 # Interactions
 # -----------------------------------------------------------------------------
 label alice_default_interact:
+    $ start_quest("meet_alice")
     $ set_flag("met_alice")
     a "[mline('alice', default=['What did you need?', 'You have that look again.', 'Alright. I am listening.'], happy=['Hey you.'], sad=['...yeah?'], tired=['Mmgh. What is it?'])]"
     menu (side="left"):
@@ -145,4 +146,50 @@ label alice_ch1_followup:
     $ react("alice")
     $ alice.trust.no += 1
     $ set_flag("ch1_followup_done")
+    return
+
+
+label alice_roof_signal:
+    $ start_quest("alice_roof_scene")
+    $ begin_dialogue("alice", pos="left")
+    a "The noticeboard looked different today."
+    a "I thought maybe I was the only one who noticed."
+    $ menu_side("middle")
+    menu:
+        "Tell Alice the whole truth.":
+            $ alice.trust(2, "no")
+            a "Okay. Then I am in this with you."
+        "Make the confident joke. {color=#ffd27a}(Coolness 10){/color}" if can("stat:Coolness>=10"):
+            $ alice.love(1, "no")
+            $ set_flag("alice_roof_cool_joke")
+            a "That was awful. I feel better anyway."
+        "Tell Alice how much she matters. {color=#ffd27a}(Alice Love 10){/color}" if can("Alice.Love>=10"):
+            $ set_flag("alice_love_10_scene_seed")
+            a "...you cannot just say that on a roof and expect me to stay normal."
+        "Keep the strange part back.":
+            $ mood("alice", "nervous", 2)
+            a "I can tell when you are protecting me from a sentence."
+    $ set_flag("alice_roof_signal_choice")
+    $ set_flag("alice_roof_signal_done")
+    $ end_dialogue()
+    return
+
+
+label alice_roof_aftercare:
+    $ begin_dialogue("alice", pos="right")
+    a "I keep replaying the roof conversation."
+    a "Not the scary parts. The part where you stayed."
+    $ alice.trust(1, "3d")
+    $ set_flag("alice_roof_aftercare_done")
+    $ end_dialogue()
+    return
+
+
+label alice_private_signal_scene:
+    scene bg smp_roof
+    show alice at left
+    a "This feels less like a clue now."
+    a "More like a promise."
+    $ set_flag("alice_private_signal_scene_done")
+    $ unlock_gallery("alice_private_signal_scene")
     return

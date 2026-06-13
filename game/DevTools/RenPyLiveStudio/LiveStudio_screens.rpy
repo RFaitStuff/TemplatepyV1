@@ -944,7 +944,9 @@ screen live_studio_settings_panel():
         textbutton "Fresh Capture" action Confirm("Discard this frame's local edits and recapture the running game?", Function(live_studio.refresh_runtime_capture)) style "live_studio_button"
 
 screen live_studio_bottom_workspace():
-    if live_studio.bottom_tab == "Dialogue":
+    if live_studio.is_extension_bottom_tab():
+        use live_studio_extension_workspace
+    elif live_studio.bottom_tab == "Dialogue":
         vbox:
             spacing 6
             xfill True
@@ -954,6 +956,8 @@ screen live_studio_bottom_workspace():
                 text "Dialogue" style "live_studio_accent_text" yalign 0.5
                 textbutton "Assets" action Function(live_studio.set_bottom_tab, "Assets") style "live_studio_tab"
                 textbutton "Dialogue" action Function(live_studio.set_bottom_tab, "Dialogue") selected True style "live_studio_tab"
+                for ext in live_studio.visible_extensions():
+                    textbutton ext.get("title", ext.get("id")) action Function(live_studio.set_bottom_tab, live_studio.extension_tab_id(ext.get("id"))) style "live_studio_tab"
                 null width 1 xfill True
                 text live_studio.safe_display_text(live_studio.flow_summary(), 48) style "live_studio_muted_text" yalign 0.5
             use live_studio_dialogue_workspace
@@ -986,6 +990,8 @@ screen live_studio_assets_workspace():
                 textbutton "Clear" action Function(live_studio.clear_asset_filter) style "live_studio_compact_button"
             null width 1 xfill True
             textbutton "Dialogue" action Function(live_studio.set_bottom_tab, "Dialogue") style "live_studio_tab"
+            for ext in live_studio.visible_extensions():
+                textbutton ext.get("title", ext.get("id")) action Function(live_studio.set_bottom_tab, live_studio.extension_tab_id(ext.get("id"))) style "live_studio_tab"
             textbutton "Grid" action Function(live_studio.set_asset_view_mode, "grid") selected live_studio.asset_view_mode == "grid" style "live_studio_icon_button"
             textbutton "List" action Function(live_studio.set_asset_view_mode, "list") selected live_studio.asset_view_mode == "list" style "live_studio_icon_button"
 
@@ -1138,8 +1144,86 @@ screen live_studio_assets_workspace():
                                             hbox:
                                                 spacing 2
                                                 xalign 0.5
-                                                textbutton "Music" action Function(live_studio.add_audio_event, asset.get("name"), "music") style "live_studio_compact_button"
-                                                textbutton "SFX" action Function(live_studio.add_audio_event, asset.get("name"), "sound") style "live_studio_compact_button"
+                            textbutton "Music" action Function(live_studio.add_audio_event, asset.get("name"), "music") style "live_studio_compact_button"
+                            textbutton "SFX" action Function(live_studio.add_audio_event, asset.get("name"), "sound") style "live_studio_compact_button"
+
+
+screen live_studio_extension_workspace():
+    $ ext = live_studio.active_extension()
+    if ext is None:
+        vbox:
+            spacing 6
+            text "Extension unavailable" style "live_studio_heading"
+            textbutton "Assets" action Function(live_studio.set_bottom_tab, "Assets") style "live_studio_tab"
+    else:
+        vbox:
+            spacing 6
+            xfill True
+            yfill True
+            hbox:
+                spacing 4
+                text ext.get("title", "Extension") style "live_studio_accent_text" yalign 0.5
+                textbutton "Assets" action Function(live_studio.set_bottom_tab, "Assets") style "live_studio_tab"
+                textbutton "Dialogue" action Function(live_studio.set_bottom_tab, "Dialogue") style "live_studio_tab"
+                for other_ext in live_studio.visible_extensions():
+                    textbutton other_ext.get("title", other_ext.get("id")) action Function(live_studio.set_bottom_tab, live_studio.extension_tab_id(other_ext.get("id"))) selected other_ext.get("id") == ext.get("id") style "live_studio_tab"
+                null width 1 xfill True
+                text live_studio.safe_display_text(ext.get("description", ""), 58) style "live_studio_muted_text" yalign 0.5
+
+            hbox:
+                spacing 8
+                xfill True
+                yfill True
+                frame:
+                    style "live_studio_panel_alt"
+                    xsize 320
+                    yfill True
+                    viewport:
+                        mousewheel True
+                        draggable True
+                        scrollbars "vertical"
+                        yfill True
+                        vbox:
+                            spacing 6
+                            text "Commands" style "live_studio_heading"
+                            for command in live_studio.extension_commands(ext):
+                                button:
+                                    style "live_studio_tool_button"
+                                    action Function(live_studio.run_extension_command, ext.get("id"), command.get("id"))
+                                    xfill True
+                                    vbox:
+                                        spacing 2
+                                        text command.get("title", command.get("id", "Command")) style "live_studio_button_text"
+                                        if command.get("description"):
+                                            text live_studio.safe_display_text(command.get("description"), 42) style "live_studio_muted_text"
+                            add Solid("#24303e", xsize=290, ysize=1)
+                            text "Registry Snapshot" style "live_studio_heading"
+                            for row in live_studio.extension_summary_rows(ext):
+                                text live_studio.safe_display_text("{}: {}".format(row.get("label", ""), row.get("value", "")), 54) style "live_studio_muted_text"
+
+                frame:
+                    style "live_studio_panel_alt"
+                    xfill True
+                    yfill True
+                    vbox:
+                        spacing 6
+                        hbox:
+                            text live_studio.extension_preview_title() style "live_studio_heading" yalign 0.5
+                            null width 1 xfill True
+                            textbutton "Copy" action Function(live_studio.copy_extension_preview) sensitive bool(live_studio.extension_preview_text()) style "live_studio_compact_button"
+                        viewport:
+                            mousewheel True
+                            draggable True
+                            scrollbars "vertical"
+                            yfill True
+                            frame:
+                                background Solid("#080d15")
+                                padding (10, 8)
+                                xfill True
+                                if live_studio.extension_preview_text():
+                                    text live_studio.safe_display_text(live_studio.extension_preview_text(), escape_interpolation=False) style "live_studio_small"
+                                else:
+                                    text "Run a command to generate editable Project Tac code or validation notes." style "live_studio_muted_text"
 
 
 screen live_studio_dialogue_workspace():

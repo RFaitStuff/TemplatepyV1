@@ -24,6 +24,44 @@
 default reveal_clicks = False
 
 
+transform exploration_layer_static(xa=0.5, ya=0.5, z=1.0, a=1.0, xo=0, yo=0):
+    xalign xa
+    yalign ya
+    zoom z
+    alpha a
+    xoffset xo
+    yoffset yo
+
+
+transform exploration_layer_drift(dx=0, dy=0, dur=12.0):
+    block:
+        xoffset 0
+        yoffset 0
+        linear dur xoffset dx yoffset dy
+        linear dur xoffset 0 yoffset 0
+        repeat
+
+
+screen location_visual_layers(slot=None):
+    zorder 1
+    for _layer in location_layers(slot=slot):
+        if _layer.get("image"):
+            $ _pos = _layer.get("pos", (0.5, 0.5))
+            $ _offset = _layer.get("offset", (0, 0))
+            $ _zoom = _layer.get("zoom", 1.0)
+            $ _alpha = _layer.get("alpha", 1.0)
+            $ _drift = _layer.get("drift")
+            if _drift:
+                $ _dx = _drift[0] if isinstance(_drift, (tuple, list)) and len(_drift) > 0 else _layer.get("drift_x", 0)
+                $ _dy = _drift[1] if isinstance(_drift, (tuple, list)) and len(_drift) > 1 else _layer.get("drift_y", 0)
+                $ _dur = _layer.get("duration", 12.0)
+                add _layer.get("image"):
+                    at exploration_layer_static(_pos[0], _pos[1], _zoom, _alpha, _offset[0], _offset[1]), exploration_layer_drift(_dx, _dy, _dur)
+            else:
+                add _layer.get("image"):
+                    at exploration_layer_static(_pos[0], _pos[1], _zoom, _alpha, _offset[0], _offset[1])
+
+
 screen location_nav(npcs_here=[]):
     zorder 10
 
@@ -47,6 +85,7 @@ screen location_nav(npcs_here=[]):
     for _ex in _exits:
         $ _epos = _ex.get("pos", (0.5, 0.95))
         $ _sz   = _ex.get("size", (200, 460))
+        $ _elock = exit_locked_reason(_ex)
         button:
             xalign _epos[0]
             yalign _epos[1]
@@ -55,8 +94,8 @@ screen location_nav(npcs_here=[]):
             yoffset -_sz[1] // 2
             background ("#ffd84a22" if reveal_clicks else None)
             hover_background "#ffd84a44"
-            action [Function(decrease_stamina, _ex.get("stamina", 10)), Function(goto_location, _ex["to"]), Jump("explore")]
-            tooltip _ex.get("label", _ex["to"])
+            action If(_elock, Function(renpy.notify, _elock), [Function(decrease_stamina, _ex.get("stamina", 10)), Function(goto_location, _ex["to"]), Jump("explore")])
+            tooltip (_elock or _ex.get("label", _ex["to"]))
             # Hover label (entrance name).
             text _ex.get("label", _ex["to"]):
                 align (0.5, 1.0)
@@ -65,10 +104,12 @@ screen location_nav(npcs_here=[]):
                 color "#ffffffcc"
                 outlines [(2, "#000")]
             # Quest target highlight.
-            if quest_marker_for_exit(_ex["to"]):
-                add "ui_quest_marker":
+            $ _qmark_exit = quest_marker_text_for_exit(_ex["to"])
+            if _qmark_exit:
+                fixed:
                     align (0.5, 0.2)
                     at pulse
+                    use quest_marker_badge(_qmark_exit)
             if character_marker_for_exit(_ex["to"]):
                 add "ui_character_marker":
                     align (0.5, 0.0)
@@ -97,11 +138,13 @@ screen location_nav(npcs_here=[]):
                     yalign 1.0
                     zoom character_default_zoom
                     alpha 0.01
-            if quest_marker_for_iid(_npc):
-                add "ui_quest_marker":
+            $ _qmark_npc = quest_marker_text_for_iid(_npc)
+            if _qmark_npc:
+                fixed:
                     align (0.5, 0.0)
                     yoffset -20
                     at pulse
+                    use quest_marker_badge(_qmark_npc)
             if character_marker_for_iid(_npc):
                 add "ui_character_marker":
                     align (0.5, 0.0)
@@ -120,16 +163,20 @@ screen location_nav(npcs_here=[]):
             hover_background "#ffd84a70"
             action Function(_handle_item_click, _it, _label)
             tooltip _it
-            if quest_marker_for_iid(_it):
-                add "ui_quest_marker":
+            $ _qmark_item = quest_marker_text_for_iid(_it)
+            if _qmark_item:
+                fixed:
                     align (0.5, 0.0)
                     at pulse
+                    use quest_marker_badge(_qmark_item)
 
     # ---- click hotspots over registered objects -------------------------
     for _obj in location_objects():
         $ _opos = _obj.get("pos", (0.5, 0.5))
-        $ _osz  = _obj.get("size", (100, 100))
+        $ _hitbox = _obj.get("hitbox") or {}
+        $ _osz  = _hitbox.get("size", _obj.get("size", (100, 100)))
         $ _oimg = _obj.get("image")
+        $ _hover_img = _obj.get("hover_image") or _oimg
         $ _ohov = (_hovered_object == _obj["id"])
         if _ohov:
             $ _obj_matrix = BrightnessMatrix(0.25)
@@ -147,7 +194,7 @@ screen location_nav(npcs_here=[]):
                 background None
                 hover_background None
                 focus_mask True
-                add _oimg:
+                add (_hover_img if _ohov else _oimg):
                     xalign 0.5
                     yalign 0.5
                     alpha _obj_alpha
@@ -162,10 +209,12 @@ screen location_nav(npcs_here=[]):
             unhovered SetScreenVariable("_hovered_object", None)
             action Function(handle_interactable_click, _obj["id"], _opos)
             tooltip _obj.get("label", _obj["id"])
-            if quest_marker_for_iid(_obj["id"]):
-                add "ui_quest_marker":
+            $ _qmark_obj = quest_marker_text_for_iid(_obj["id"])
+            if _qmark_obj:
+                fixed:
                     align (0.5, 0.0)
                     at pulse
+                    use quest_marker_badge(_qmark_obj)
 
     # ---- character hover bubble -----------------------------------------
     # Floats above whichever NPC is hovered. Shows display name, an
@@ -262,19 +311,53 @@ init python:
 init python:
 
     def location_exits(loc_id=None):
-        return list(location_data(loc_id).get("exits", []))
+        out = []
+        for ex in location_data(loc_id).get("exits", []):
+            if exit_locked_reason(ex):
+                if not ex.get("show_when_locked", False):
+                    continue
+            target = ex.get("to")
+            if target and target in locations and not is_room_unlocked(target):
+                if not ex.get("show_when_locked", False):
+                    continue
+            out.append(ex)
+        return out
+
+    def exit_locked_reason(ex):
+        requirements = ex.get("requires") or ex.get("show_when") or ex.get("unlock_when")
+        if requirements is not None:
+            try:
+                missing = first_missing_requirement(requirements)
+                if missing:
+                    return ex.get("locked_message") or missing
+            except Exception:
+                return ex.get("locked_message") or "Locked"
+        target = ex.get("to")
+        if target and target in locations and not is_room_unlocked(target):
+            return ex.get("locked_message") or "Locked"
+        return ""
 
     def location_objects(loc_id=None):
-        return list(location_data(loc_id).get("objects", []))
+        out = []
+        for obj in location_data(loc_id).get("objects", []):
+            requirements = obj.get("requires") or obj.get("show_when") or obj.get("unlock_when")
+            if requirements is not None and not meets_requirements(requirements, actor=obj.get("id")):
+                continue
+            out.append(obj)
+        return out
 
     def npc_clickable_image(char_id):
         try:
             v = location_character_pose(current_location, char_id)
         except Exception:
             v = ""
+        try:
+            image_id = character_image_aliases.get(char_id, char_id)
+        except Exception:
+            image_id = char_id
         if v:
-            return "characters " + char_id + str(v)
-        return "characters " + char_id
+            return "characters " + image_id + str(v)
+        return "characters " + image_id
 
 
 # =============================================================================
@@ -282,4 +365,9 @@ init python:
 # Drop a real asset at assets/images/UI/quest_marker.* later to override.
 # =============================================================================
 image ui_quest_marker = Text("!", size=42, color="#ffd27a", outlines=[(3, "#000")])
+screen quest_marker_badge(marker_text="!"):
+    frame:
+        background "#1a1322cc"
+        padding (8, 2)
+        text "[marker_text]" size 32 color "#ffd27a" outlines [(3, "#000000")]
 image ui_character_marker = Text("◆", size=32, color="#b487ff", outlines=[(2, "#000")])

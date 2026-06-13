@@ -548,6 +548,10 @@ init -40 python:
 
 
     def begin_dialogue(char_id=None, pos="middle"):
+        try:
+            renpy.hide_screen("location_visual_layers")
+        except Exception:
+            pass
         if store._in_dialogue:
             if char_id:
                 dialogue_show(char_id, pos=pos)
@@ -572,6 +576,10 @@ init -40 python:
 
 
     def end_dialogue():
+        try:
+            clear_dialog_mode()
+        except Exception:
+            pass
         if not store._in_dialogue and not store._dialogue_cast:
             store._dialogue_room_snap = {}
             store._dialogue_hidden_master = set()

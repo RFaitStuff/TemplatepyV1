@@ -10,6 +10,48 @@ default _last_speaker = None
 # =============================================================================
 # Character factory + Character objects
 # =============================================================================
+init -25 python:
+    perk_defs = {}
+
+    def _player_stat_defs():
+        global PLAYER_STAT_DEFS
+        try:
+            PLAYER_STAT_DEFS
+        except NameError:
+            PLAYER_STAT_DEFS = {}
+        return PLAYER_STAT_DEFS
+
+    def stat_def(stat_id, label=None, default=0, icon=None, color=None, min=0, max=None, hidden=False, aliases=None, **extra):
+        data = _player_stat_defs().setdefault(stat_id, {})
+        data.update({
+            "id": stat_id,
+            "label": label or stat_id,
+            "default": default if default is not None else data.get("default", 0),
+            "icon": icon,
+            "color": color,
+            "min": min,
+            "max": max,
+            "hidden": bool(hidden),
+            "aliases": list(aliases or []),
+        })
+        data.update(extra)
+        return data
+
+    def perk(perk_id, stat=None, requires=None, title=None, desc=None, **extra):
+        data = perk_defs.setdefault(perk_id, {})
+        if requires is None and stat:
+            requires = "{}>=1".format(stat)
+        data.update({
+            "id": perk_id,
+            "title": title or str(perk_id).replace("_", " ").title(),
+            "desc": desc or "",
+            "stat": stat,
+            "requires": requires,
+        })
+        data.update(extra)
+        return data
+
+
 init -5 python:
 
     def tracked_character(name, char_id, **kwargs):
@@ -76,6 +118,8 @@ init python:
 
     def set_stat(char, stat, value):
         if char == "player":
+            value = clamp_player_stat(stat, value)
+        if char == "player":
             setattr(store, stat, value)
         else:
             ensure_character_state(char)[stat] = value
@@ -89,7 +133,7 @@ init python:
             return
         if char == "player":
             cur = getattr(store, stat, 0)
-            new = cur + amount
+            new = clamp_player_stat(stat, cur + amount)
             setattr(store, stat, new)
             if source is None:
                 source = store._last_speaker
@@ -298,6 +342,58 @@ init python:
                 out[char] = v
         out["<total>"] = total
         return out
+
+    def player_stat_def(stat):
+        return (globals().get("PLAYER_STAT_DEFS", {}) or {}).get(stat, {})
+
+    def clamp_player_stat(stat, value):
+        data = player_stat_def(stat)
+        try:
+            value = int(value)
+        except Exception:
+            value = 0
+        if data.get("min") is not None:
+            value = max(int(data.get("min")), value)
+        if data.get("max") is not None:
+            value = min(int(data.get("max")), value)
+        return value
+
+    def perk_unlocked(perk_id):
+        data = perk_defs.get(perk_id)
+        if not data:
+            return False
+        requires = data.get("requires")
+        if not requires:
+            return True
+        try:
+            return meets_requirements(requires)
+        except Exception:
+            return False
+
+    def active_perks(stat=None):
+        rows = []
+        for perk_id, data in perk_defs.items():
+            if stat and data.get("stat") != stat:
+                continue
+            if perk_unlocked(perk_id):
+                rows.append(data)
+        rows.sort(key=lambda item: item.get("title", item.get("id", "")))
+        return rows
+
+    def perk_rows(stat=None, include_locked=True):
+        rows = []
+        for perk_id, data in perk_defs.items():
+            if stat and data.get("stat") != stat:
+                continue
+            unlocked = perk_unlocked(perk_id)
+            if not unlocked and not include_locked:
+                continue
+            row = dict(data)
+            row["unlocked"] = unlocked
+            row["requirement_text"] = str(data.get("requires") or "")
+            rows.append(row)
+        rows.sort(key=lambda item: (not item.get("unlocked"), item.get("title", item.get("id", ""))))
+        return rows
 
 
     # ---- response randomization & mood-gated lines ----------------------

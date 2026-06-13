@@ -38,14 +38,18 @@ init -20 python:
     }
 
     PLAYER_STAT_DEFS = {
-        "Coolness": {"default": 0},
-        "Strength": {"default": 0},
-        "Intelligence": {"default": 0},
-        "Charisma": {"default": 0},
-        "Agility": {"default": 0},
-        "Lust": {"default": 0},
-        "Love": {"default": 0},
+        "Coolness": {"default": 0, "label": "Coolness", "color": "#64d6ff", "min": 0, "max": 20, "aliases": ["cool"]},
+        "Strength": {"default": 0, "label": "Strength", "color": "#ff8a8a", "min": 0, "max": 20},
+        "Intelligence": {"default": 0, "label": "Intelligence", "color": "#b8a7ff", "min": 0, "max": 20, "aliases": ["brains"]},
+        "Charisma": {"default": 0, "label": "Charisma", "color": "#ffd27a", "min": 0, "max": 20},
+        "Agility": {"default": 0, "label": "Agility", "color": "#9ce8b2", "min": 0, "max": 20},
+        "Lust": {"default": 0, "label": "Lust", "color": "#ff9ec7", "min": 0, "max": 20},
+        "Love": {"default": 0, "label": "Love", "color": "#ff8de7", "min": 0, "max": 20},
     }
+
+    perk("smooth_talker", stat="Coolness", requires="Coolness>=10", title="Smooth Talker", desc="Cool choices unlock more often.")
+    perk("sharp_reader", stat="Intelligence", requires="Intelligence>=10", title="Sharp Reader", desc="Notice hidden context in investigations.")
+    perk("warm_presence", stat="Charisma", requires="Charisma>=10", title="Warm Presence", desc="Some tense conversations soften.")
 
     def initial_character_state():
         state = {name: data.get("default", 0) for name, data in CHARACTER_STAT_DEFS.items()}
@@ -57,8 +61,9 @@ init -20 python:
     def initial_character_stats(character_ids):
         return {char_id: initial_character_state() for char_id in character_ids}
 
-# Test twin Alex currently shares Alice's image set but has separate state.
-default character_stats = initial_character_stats(("alice", "alex"))
+# Test characters Bree and Cora intentionally reuse Alice's image set through
+# character_image_aliases in Engine/Images/Image_Locater.rpy.
+default character_stats = initial_character_stats(("alice", "alex", "bree", "cora"))
 
 
 default character_fact_defs = {
@@ -72,6 +77,16 @@ default character_fact_defs = {
         {"id": "hobby", "label": "Hobby", "text": "She collects odd rumors."},
         {"id": "secret", "label": "Secret", "text": "She notices more than she admits."},
     ],
+    "bree": [
+        {"id": "favorite_place", "label": "Favorite Place", "text": "She likes rooms with locked cabinets and bad lighting."},
+        {"id": "hobby", "label": "Hobby", "text": "She builds tests for systems that claim they are finished."},
+        {"id": "secret", "label": "Secret", "text": "She knows which school records were rewritten."},
+    ],
+    "cora": [
+        {"id": "favorite_place", "label": "Favorite Place", "text": "She prefers stairwells because nobody looks up."},
+        {"id": "hobby", "label": "Hobby", "text": "She annotates every rumor with a confidence score."},
+        {"id": "secret", "label": "Secret", "text": "She can identify people by their footsteps."},
+    ],
 }
 default unlocked_character_facts = {}
 
@@ -79,9 +94,13 @@ default unlocked_character_facts = {}
 # Speakable Character() objects. Color is the name-text color in the say box.
 define a  = tracked_character("Alice",  "alice",  color="#ff9ec7")  # pink
 define a2 = tracked_character("Alex", "alex", color="#7fdf9c")  # green
+define b  = tracked_character("Bree", "bree", color="#9ec7ff")
+define c  = tracked_character("Cora", "cora", color="#ffd27a")
 
 define character_speakers = {
     "alice": a,
     "alex": a2,
+    "bree": b,
+    "cora": c,
 }
 

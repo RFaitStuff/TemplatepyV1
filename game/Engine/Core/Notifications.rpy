@@ -24,6 +24,7 @@
 default _notify_queue   = []     # pending notifications waiting for a slot
 default _notify_active  = []     # [{id, kind, text, icon, born}, ...] visible
 default _notify_counter = 0
+default _modal_notice = None
 
 
 define notify_max_visible = 4
@@ -32,6 +33,48 @@ define notify_enabled     = True
 
 
 init -50 python:
+    sound_presets = {}
+
+    def sound_preset(name, file=None, channel="sound", volume=1.0, loop=False, fadein=0.0, fadeout=0.0, **extra):
+        data = {
+            "id": name,
+            "file": file,
+            "channel": channel,
+            "volume": float(volume),
+            "loop": bool(loop),
+            "fadein": float(fadein),
+            "fadeout": float(fadeout),
+        }
+        data.update(extra)
+        sound_presets[name] = data
+        try:
+            if channel not in ("sound", "music", "voice"):
+                renpy.music.register_channel(channel, channel, loop=loop)
+        except Exception:
+            pass
+        return data
+
+    def play_sound_preset(name, file=None):
+        data = sound_presets.get(name, {})
+        audio_file = file or data.get("file")
+        if not audio_file:
+            return None
+        channel = data.get("channel", "sound")
+        try:
+            renpy.music.set_volume(data.get("volume", 1.0), channel=channel)
+            renpy.music.play(
+                audio_file,
+                channel=channel,
+                loop=data.get("loop", False),
+                fadein=data.get("fadein", 0.0),
+                fadeout=data.get("fadeout", 0.0),
+            )
+        except Exception as error:
+            try:
+                renpy.log("Sound preset '{}' failed: {!r}".format(name, error))
+            except Exception:
+                pass
+        return None
 
     def _now_runtime():
         # Wall-clock-ish progress timer. Monotonically increasing across
@@ -169,6 +212,67 @@ init -50 python:
         _notify_active[:] = []
         _notify_queue[:]  = []
         _restart_interaction_quiet()
+
+    def notify_modal(title, body="", kind="info", sound=None, icon=None, color=None):
+        global _modal_notice
+        if not notify_enabled:
+            return None
+        try:
+            if not system_enabled("notifications"):
+                return None
+        except Exception:
+            pass
+        _modal_notice = {
+            "title": title,
+            "body": body,
+            "kind": kind,
+            "sound": sound,
+            "icon": icon,
+            "color": color,
+        }
+        if sound:
+            play_sound_preset(sound)
+        renpy.show_screen("modal_notice")
+        _restart_interaction_quiet()
+        return None
+
+    def clear_modal_notice():
+        global _modal_notice
+        _modal_notice = None
+        renpy.hide_screen("modal_notice")
+        _restart_interaction_quiet()
+        return None
+
+
+init -49 python:
+    sound_preset("ui_confirm", channel="sound", volume=0.75)
+    sound_preset("phone_vibrate", channel="sfx", volume=0.66)
+    sound_preset("quest_major", channel="sound", volume=0.85)
+
+
+screen modal_notice():
+    tag modal_notice
+    modal True
+    zorder 500
+    if _modal_notice and not interface_hidden:
+        add "#05040bcc"
+        frame:
+            align (0.5, 0.5)
+            xsize 620
+            background "#11131ff2"
+            padding (34, 28)
+            vbox:
+                spacing 14
+                text _modal_notice.get("title", "Notice") size 34 color (_modal_notice.get("color") or "#ff8de7") xalign 0.5
+                if _modal_notice.get("body"):
+                    text _modal_notice.get("body") size 20 color "#f5edf7" xalign 0.5 text_align 0.5
+                textbutton "OK":
+                    xalign 0.5
+                    text_size 22
+                    background "#623c91dd"
+                    hover_background "#7a4cb0dd"
+                    padding (22, 10)
+                    action Function(clear_modal_notice)
 
 
 # =============================================================================

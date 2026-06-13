@@ -11,6 +11,7 @@ default stamina = 80
 default time = 8   # Starting hour (24h, 0-23). 8 = 8 AM.
 default day = 1
 default _pending_stamina_cost = 0
+default stamina_cost_multiplier = 1.0
 
 # -----------------------------------------------------------------------------
 # Hour-advance hooks. Other systems (mood decay, world events, NPC schedules)
@@ -77,6 +78,29 @@ init python:
             pass
         return True
 
+    def set_stamina_cost_multiplier(value=1.0):
+        global stamina_cost_multiplier
+        try:
+            stamina_cost_multiplier = max(0.0, float(value))
+        except Exception:
+            stamina_cost_multiplier = 1.0
+        return stamina_cost_multiplier
+
+    def reset_stamina_cost_multiplier():
+        return set_stamina_cost_multiplier(1.0)
+
+    def adjusted_stamina_cost(amount):
+        try:
+            amount = int(amount or 0)
+        except Exception:
+            amount = 0
+        if amount <= 0:
+            return 0
+        try:
+            return max(1, int(round(amount * float(stamina_cost_multiplier))))
+        except Exception:
+            return amount
+
     def decrease_stamina(amount=20):
         global stamina
         try:
@@ -84,7 +108,7 @@ init python:
                 return
         except Exception:
             pass
-        amount = int(amount or 0)
+        amount = adjusted_stamina_cost(amount)
         if amount <= 0:
             return
         stamina -= amount

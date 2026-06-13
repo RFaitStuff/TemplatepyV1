@@ -23,4 +23,16 @@ default character_schedules = {
         "evening":   "club_room",
         "night":     "roof",
     },
+    "bree": {
+        "day":       "hallway",
+        "afternoon": "archive_room",
+        "evening":   "club_room",
+        "night":     "roof",
+    },
+    "cora": {
+        "day":       "front",
+        "afternoon": "archive_room",
+        "evening":   "archive_room",
+        "night":     "hallway",
+    },
 }

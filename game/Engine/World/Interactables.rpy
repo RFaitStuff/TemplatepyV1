@@ -18,6 +18,7 @@ init -90 python:
 
 default seen_actions = set()
 default last_actions = {}
+default action_memory = {}
 default _pending_interactable_id = None
 default _pending_action_id = None
 default force_action_menu = False
@@ -52,6 +53,7 @@ init -89 python:
         label=None,
         icon=None,
         available_if=None,
+        requires=None,
         primary=False,
         stamina=None,
         tooltip=None,
@@ -68,6 +70,7 @@ init -89 python:
                     "label": label if label is not None else a.get("label"),
                     "icon": icon if icon is not None else a.get("icon"),
                     "available_if": available_if if available_if is not None else a.get("available_if"),
+                    "requires": requires if requires is not None else a.get("requires"),
                     "primary": bool(primary or a.get("primary")),
                     "stamina": stamina if stamina is not None else a.get("stamina"),
                     "tooltip": tooltip if tooltip is not None else a.get("tooltip"),
@@ -80,6 +83,7 @@ init -89 python:
             "label": label,
             "icon": icon,
             "available_if": available_if,
+            "requires": requires,
             "primary": bool(primary),
             "stamina": stamina,
             "tooltip": tooltip,
@@ -196,7 +200,13 @@ init python:
     def get_interactable(iid):
         return ensure_interactable(iid)
 
-    def _safe_available(fn):
+    def _safe_available(fn, requirements=None, actor=None):
+        if requirements is not None:
+            try:
+                if not meets_requirements(requirements, actor=actor):
+                    return False
+            except Exception:
+                return False
         if fn is None:
             return True
         try:
@@ -204,16 +214,87 @@ init python:
         except Exception:
             return False
 
+    def action_requirement_met(iid, action):
+        if not action:
+            return False
+        return _safe_available(action.get("available_if"), action.get("requires"), actor=iid)
+
+    def action_runtime_visible(iid, action, include_locked=False):
+        if not action:
+            return False
+        if action.get("hidden"):
+            return False
+        if action.get("once") and has_seen_action(iid, action.get("id")) and not action.get("show_after_seen", False):
+            return False
+        if not include_locked and not action_requirement_met(iid, action):
+            return False
+        return True
+
     def interactable_actions(iid, only_available=True):
         d = ensure_interactable(iid)
         if not d:
             return []
         out = []
         for a in d.get("actions", []):
-            if only_available and not _safe_available(a.get("available_if")):
+            if not action_runtime_visible(iid, a, include_locked=not only_available):
                 continue
             out.append(a)
+        if _should_add_item_use_action(iid, d, out, only_available):
+            out.append(_item_use_action_for(iid, d))
         return out
+
+    def _should_add_item_use_action(iid, d, actions, only_available=True):
+        if not system_enabled("inventory"):
+            return False
+        if any(a.get("id") == "use_item" for a in actions):
+            return False
+        if d.get("kind") == "character" and not d.get("allow_item_use"):
+            return False
+        target = d.get("item_use_target", iid)
+        allow = bool(d.get("allow_item_use") or target_has_item_use(target) or d.get("kind") == "object")
+        if not allow:
+            return False
+        if only_available:
+            try:
+                return bool(inventory_visible_items())
+            except Exception:
+                return False
+        return True
+
+    def _item_use_action_for(iid, d):
+        return {
+            "id": "use_item",
+            "title": d.get("use_item_title", "Use Item"),
+            "icon": d.get("use_item_icon"),
+            "primary": False,
+            "stamina": 0,
+            "tooltip": d.get("use_item_tooltip", "Use something from your bag."),
+            "item_picker": True,
+            "item_target": d.get("item_use_target", iid),
+            "allow_any_item": bool(d.get("allow_item_use") or d.get("kind") == "object"),
+            "filter": d.get("item_use_filter"),
+        }
+
+    def action_locked_reason(iid, action):
+        if not action:
+            return ""
+        if action.get("once") and has_seen_action(iid, action.get("id")) and not action.get("repeatable", False):
+            return action.get("seen_message") or "Already done"
+        requirements = action.get("requires")
+        if requirements is not None:
+            try:
+                missing = first_missing_requirement(requirements, actor=iid)
+                if missing:
+                    return missing
+            except Exception:
+                return "Requirement not met"
+        if action.get("available_if") is not None:
+            try:
+                if not action.get("available_if")():
+                    return action.get("tooltip") or "Unavailable"
+            except Exception:
+                return "Unavailable"
+        return ""
 
     def primary_action(iid):
         actions = interactable_actions(iid, only_available=True)
@@ -299,11 +380,36 @@ init python:
         return out
 
     def mark_action_seen(iid, action_id):
+        if not action_id:
+            return
+        today = globals().get("day", 0)
         seen_actions.add((iid, action_id))
         last_actions[iid] = action_id
+        key = (iid, action_id)
+        data = action_memory.setdefault(key, {
+            "count": 0,
+            "first_day": today,
+            "last_day": None,
+        })
+        data["count"] = int(data.get("count", 0)) + 1
+        data.setdefault("first_day", today)
+        data["last_day"] = today
 
     def has_seen_action(iid, action_id):
         return (iid, action_id) in seen_actions
+
+    def action_seen_count(iid, action_id):
+        return int(action_memory.get((iid, action_id), {}).get("count", 0))
+
+    def action_first_time(iid, action_id):
+        return not has_seen_action(iid, action_id)
+
+    def action_first_time_today(iid, action_id):
+        data = action_memory.get((iid, action_id), {})
+        return data.get("last_day") != globals().get("day", 0)
+
+    def action_last_seen_day(iid, action_id):
+        return action_memory.get((iid, action_id), {}).get("last_day")
 
     def all_actions_seen(iid):
         actions = interactable_actions(iid, only_available=True)
@@ -313,6 +419,10 @@ init python:
 
     def action_is_darkened(iid, action):
         if not action:
+            return False
+        if action.get("always_bright"):
+            return False
+        if action.get("quiet_after_seen") is False:
             return False
         if action.get("id") == "interact":
             return False
@@ -344,6 +454,15 @@ init python:
             emit("interactable_clicked", iid, action_id=action.get("id"))
         except Exception:
             pass
+        if action.get("item_picker"):
+            renpy.show_screen(
+                "inventory_item_picker",
+                prompt=action.get("prompt", "Use what?"),
+                target=action.get("item_target", iid),
+                item_filter=action.get("filter"),
+                allow_any_item=action.get("allow_any_item", False),
+            )
+            return
         d = get_interactable(iid)
         if d and d.get("kind") == "character":
             begin_dialogue(iid)
@@ -418,9 +537,11 @@ label _character_quest_dispatch:
 label _character_interact_dispatch:
     $ _cid = _pending_interactable_id
     $ begin_dialogue(_cid)
-    $ _label = character_interact_label(_cid)
-    if _label and renpy.has_label(_label):
-        call expression _label
+    $ _entry = choose_character_interact(_cid)
+    if _entry and _entry.get("label") and renpy.has_label(_entry.get("label")):
+        call expression _entry.get("label")
+        if _entry.get("complete_on_seen", True):
+            $ mark_character_interaction_completed(_cid, _entry)
     elif _cid and renpy.has_label("interact_" + _cid):
         call expression "interact_" + _cid
     else:

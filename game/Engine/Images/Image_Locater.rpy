@@ -27,7 +27,11 @@
 
 define tod_folders = {"bg"}
 define character_folders = {"characters"}
-define character_image_aliases = {}
+define character_image_aliases = {
+    "bree": "alice",
+    "cora": "alex",
+    "core": "alex",
+}
 define extra_emotion_names = {"blush", "doubt", "teasing", "neutral"}
 
 

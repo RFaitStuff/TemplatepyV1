@@ -8,6 +8,7 @@ define SYSTEM_DEFAULTS = {
     "schedules": True,
     "inventory": True,
     "gallery": True,
+    "minigames": True,
     "notifications": True,
     "debug_tools": True,
 }

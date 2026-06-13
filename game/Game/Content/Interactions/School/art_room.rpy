@@ -6,13 +6,13 @@
 # =============================================================================
 
 init python:
-    configure_location(
-        "art_room",
+    location_package(
+        id="art_room",
         positions={
             "alice":  [(0.30, 1.0)],
             "alex": [(0.70, 1.0)],
         },
         exits=[
-            {"to": "hallway", "label": "Hallway", "pos": (0.05, 0.55), "size": (160, 480)},
+            exit_spot("hallway", label="Hallway", pos=(0.05, 0.55), size=(160, 480)),
         ],
     )

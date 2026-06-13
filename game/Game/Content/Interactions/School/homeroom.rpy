@@ -11,12 +11,12 @@
 # =============================================================================
 
 init python:
-    configure_location(
-        "homeroom",
+    location_package(
+        id="homeroom",
         positions={
             "alice": [(0.50, 1.0), (0.40, 1.0), (0.60, 1.0)],
         },
         exits=[
-            {"to": "hallway", "label": "Hallway", "pos": (0.05, 0.55), "size": (180, 540)},
+            exit_spot("hallway", label="Hallway", pos=(0.05, 0.55), size=(180, 540)),
         ],
     )

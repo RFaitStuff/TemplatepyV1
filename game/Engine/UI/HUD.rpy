@@ -106,7 +106,7 @@ screen hud():
 
     $ _dev_restore_open_ui()
 
-    if not hud_visible:
+    if not hud_visible or interface_hidden:
         null
     else:
         # ---- top-left: day / time / stamina ----------------------------------
@@ -120,12 +120,17 @@ screen hud():
             at slide_in_top
             vbox:
                 spacing 6
+                $ _time_lock = time_sensitive_quest_lock()
                 text "[weekday_name()] - Day [day]" size 22 color "#ffffff"
                 text "[convert_to_12hr_format(time)]" size 22 color "#ffd27a"
                 text "Stamina: [stamina]/[get_max_stamina()]" size 20 color "#aef0ae"
+                if _time_lock:
+                    text "Locked: [_time_lock.title]" size 13 color "#ff8de7"
+                if stamina_cost_multiplier != 1.0:
+                    text "Pace x[stamina_cost_multiplier]" size 13 color "#a9e7ff"
                 hbox:
                     spacing 8
-                    textbutton ("Sleep" if time_skip_sleep_hour <= time < time_skip_wake_hour else "Skip Hour") action Function(skip_hour) text_size 14
+                    textbutton ("Sleep" if time_skip_sleep_hour <= time < time_skip_wake_hour else "Skip Hour") action Function(skip_hour) sensitive can_skip_time() text_size 14
 
         # ---- top-center: location label + active quest objective ------------
         # Drive frame-by-frame redraws so the glow overlays animate smoothly.
@@ -244,7 +249,8 @@ screen hud():
 
 screen notification_overlay():
     zorder 210
-    use notification_stack()
+    if not interface_hidden:
+        use notification_stack()
 
 
 init python:

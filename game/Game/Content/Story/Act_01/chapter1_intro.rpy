@@ -16,12 +16,13 @@
 
 
 init python:
-    register_gallery_scene(
-        gallery_id="ch1_intro",
+    gallery_scene(
+        "ch1_intro",
         title="Chapter 1 - Introduction",
         label="chapter1_intro",
         thumbnail="mainstory story1",
         group="Main",
+        unlock="flag:ch1_intro_seen",
     )
 
 
@@ -30,6 +31,11 @@ init python:
 # Sets the initial flags + objectives. Not a replayable memory.
 # =============================================================================
 label story_opening:
+    $ phone_contact("alice", name="Alice", status="Quiet places above the school.")
+    $ phone_tutorial("inventory_phone", title="Bag And Phone", body="Open your bag to check items, quests, notes, messages, contacts, badges, and gallery memories.")
+    $ phone_note("first_morning", title="First Morning", body="The school is open. Alice is somewhere nearby.")
+    $ phone_text("alice", "Are you already at school?", contact="alice")
+    $ mark_milestone("started_story")
     "Morning sunlight pools across an empty desk."
     "You arrive early - early enough that the halls still feel like they belong to you."
 

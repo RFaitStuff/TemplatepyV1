@@ -10,3 +10,8 @@ gui
 *.rpyc          
 log.txt
 traceback.txt
+example
+example2
+example3
+backup
+.codex_tools

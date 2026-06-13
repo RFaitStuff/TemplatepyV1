@@ -13,12 +13,16 @@ init -3 python:
 
     def register_gallery_scene(
         gallery_id,
-        title,
-        label,
+        title=None,
+        label=None,
         thumbnail=None,
         group="Main",
         character=None,
         characters=None,
+        unlock=None,
+        autounlock=False,
+        setup=None,
+        scene_image=None,
         **extra
     ):
         """Registers or updates a gallery entry.
@@ -37,6 +41,13 @@ init -3 python:
         if character and character not in linked_characters:
             linked_characters.append(character)
 
+        if label is None:
+            label = gallery_id
+        if title is None:
+            title = _gallery_title_from_id(gallery_id)
+        if thumbnail is None:
+            thumbnail = scene_image
+
         scene = {
             "id": gallery_id,
             "title": title,
@@ -44,6 +55,10 @@ init -3 python:
             "thumbnail": thumbnail,
             "group": group,
             "characters": [str(value) for value in linked_characters if value],
+            "unlock": unlock,
+            "autounlock": bool(autounlock),
+            "setup": setup,
+            "scene_image": scene_image,
         }
         scene.update(extra)
 
@@ -56,10 +71,104 @@ init -3 python:
         return scene
 
 
+    def _gallery_title_from_id(gallery_id):
+        text = str(gallery_id or "Scene").replace("_", " ").replace("-", " ").strip()
+        if not text:
+            return "Scene"
+        return " ".join(part[:1].upper() + part[1:] for part in text.split())
+
+
+    def _gallery_scene_def(gallery_id):
+        return next((scene for scene in gallery_scenes if scene.get("id") == gallery_id), None)
+
+
+    def gallery_scene(gallery_id, **kwargs):
+        if kwargs:
+            return gallery_register(gallery_id, **kwargs)
+        return _gallery_scene_def(gallery_id)
+
+
+    def gallery_register(
+        gallery_id,
+        title=None,
+        label=None,
+        character=None,
+        characters=None,
+        thumbnail=None,
+        group="Main",
+        unlock=None,
+        autounlock=False,
+        setup=None,
+        scene_image=None,
+        **extra
+    ):
+        return register_gallery_scene(
+            gallery_id=gallery_id,
+            title=title,
+            label=label or gallery_id,
+            thumbnail=thumbnail,
+            group=group,
+            character=character,
+            characters=characters,
+            unlock=unlock,
+            autounlock=autounlock,
+            setup=setup,
+            scene_image=scene_image,
+            **extra
+        )
+
+
+    def gallery_auto(label, character=None, characters=None, **kwargs):
+        kwargs.setdefault("autounlock", True)
+        return gallery_register(
+            gallery_id=kwargs.pop("gallery_id", label),
+            label=label,
+            character=character,
+            characters=characters,
+            **kwargs
+        )
+
+
+    def replay_scene(label, **kwargs):
+        kwargs.setdefault("autounlock", True)
+        return gallery_register(
+            gallery_id=kwargs.pop("gallery_id", label),
+            label=label,
+            **kwargs
+        )
+
+
+    def gallery(gallery_id, **kwargs):
+        if kwargs:
+            return gallery_register(gallery_id, **kwargs)
+        return gallery_scene(gallery_id)
+
+
 init python:
 
-    def gallery_scene(gallery_id):
-        return next((scene for scene in gallery_scenes if scene.get("id") == gallery_id), None)
+
+    def gallery_unlock_available(gallery_id):
+        scene_def = _gallery_scene_def(gallery_id)
+        if not scene_def:
+            return False
+        unlock = scene_def.get("unlock")
+        if unlock is None:
+            return False
+        try:
+            return meets_requirements(unlock)
+        except Exception:
+            return False
+
+
+    def _run_gallery_setup(scene_def):
+        setup = scene_def.get("setup")
+        if not setup:
+            return
+        if callable(setup):
+            setup()
+            return
+        if isinstance(setup, str) and renpy.has_label(setup):
+            renpy.call(setup)
 
 
     def play_gallery(gallery_id):
@@ -83,6 +192,7 @@ init python:
                 pass
             return None
 
+        _run_gallery_setup(scene_def)
         renpy.call_replay(label)
         return None
 
@@ -150,3 +260,23 @@ init python:
             if not label or not renpy.has_label(label):
                 issues.append("Gallery '{}' has missing label '{}'.".format(gallery_id, label))
         return issues
+
+
+    def _gallery_label_reached(label, *args, **kwargs):
+        try:
+            if getattr(store, "_in_replay", None):
+                return
+        except Exception:
+            pass
+        for scene in gallery_scenes:
+            if scene.get("autounlock") and scene.get("label") == label:
+                unlock_gallery(scene.get("id"))
+
+
+init 999 python:
+    try:
+        if hasattr(config, "label_callbacks"):
+            if _gallery_label_reached not in config.label_callbacks:
+                config.label_callbacks.append(_gallery_label_reached)
+    except Exception:
+        pass

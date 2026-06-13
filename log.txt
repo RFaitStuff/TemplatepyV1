@@ -1,72 +1,38 @@
-2026-06-09 19:58:50 UTC
+2026-06-12 22:11:31 UTC
 Windows-11-10.0.26200-SP0
 Ren'Py 8.5.3.26042304+nightly
 
-Early init took 228 ms
-Loading error handling took 271 ms
-Loading script took 7050 ms
-Loading save slot metadata took 407 ms
+Early init took 620 ms
+Loading error handling took 605 ms
+Loading script took 8212 ms
+Loading save slot metadata took 389 ms
 Loading persistent took 0 ms
- - Init at renpy/common/00updater.rpy:23 took 372 ms.
- - Init at game/gui.rpy:11 took 332 ms.
-
-Full traceback:
-  File "game/Game/_Data/Quests.rpy", line 8, in script
-    init 5 python:
-  File "renpy/ast.py", line 1187, in execute
-    renpy.python.py_exec_bytecode(self.code.bytecode, self.hide, store=self.store)
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/python.py", line 1276, in py_exec_bytecode
-    exec(bytecode, globals, locals)
-    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "game/Game/_Data/Quests.rpy", line 9, in <module>
-    char_quest(
-    ~~~~~~~~~~^
-        "meet_alice",
-        ^^^^^^^^^^^^^
-    ...<18 lines>...
-        ],
-        ^^
-    )
-    ^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 208, in char_quest
-    return define_quest(qid, **kwargs)
-           ~~~~~~~~~~~~^^^^^^^^^^^^^^^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 193, in define_quest
-    _quest_state(qid)
-    ~~~~~~~~~~~~^^^^^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 170, in _quest_state
-    state = quest_states.setdefault(qid, {})
-            ^^^^^^^^^^^^                    
-NameError: name 'quest_states' is not defined
-
-While running game code:
-  File "game/Game/_Data/Quests.rpy", line 8, in script
-    init 5 python:
-  File "game/Game/_Data/Quests.rpy", line 9, in <module>
-    char_quest(
-    ~~~~~~~~~~^
-        "meet_alice",
-        ^^^^^^^^^^^^^
-    ...<18 lines>...
-        ],
-        ^^
-    )
-    ^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 208, in char_quest
-    return define_quest(qid, **kwargs)
-           ~~~~~~~~~~~~^^^^^^^^^^^^^^^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 193, in define_quest
-    _quest_state(qid)
-    ~~~~~~~~~~~~^^^^^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 170, in _quest_state
-    state = quest_states.setdefault(qid, {})
-            ^^^^^^^^^^^^                    
-NameError: name 'quest_states' is not defined
+ - Init at renpy/common/00console.rpy:126 took 420 ms.
+ - Init at renpy/common/00updater.rpy:23 took 648 ms.
+ - Init at renpy/common/00steam.rpy:879 took 351 ms.
+ - Init at game/gui.rpy:11 took 517 ms.
+Running init code took 2242 ms
+Loading analysis data took 39 ms
+Analyze and compile ATL took 5 ms
+Reloading save slot metadata took 144 ms
+Backing up script files to 'C:\\Users\\Kingf\\AppData\\Roaming/RenPy/backups\\Project Tac':
+Dump and make backups took 115 ms
+Cleaning cache took 0 ms
+Making clean stores took 0 ms
+Initial gc took 51 ms
 DPI scale factor: 1.000000
 nvdrs: Loaded, about to disable thread optimizations.
 nvdrs: Disabled thread optimizations.
-Interface start took 2043 ms
+Creating interface object took 366 ms
+Init translation took 1 ms
+Cleaning stores took 0 ms
+Load screen analysis took 79 ms
+Analyze screens took 83 ms
+Save screen analysis took 63 ms
+Save pyanalysis took 16 ms
+Save bytecode took 173 ms
+Running _start took 2 ms
+Interface start took 1354 ms
 
 Initializing gl2 renderer:
 primary display bounds: (0, 0, 2560, 1440)
@@ -79,115 +45,831 @@ Display Info: <Info({'bitsize': 32, 'bytesize': 4, 'masks': (16711680, 65280, 25
 Screen sizes: virtual=(1920, 1080) physical=(2560, 1417) drawable=(2560, 1417)
 Maximum texture size: 4096x4096
 INFO:renpy_warp_service:service thread started. periodically scanning ports for warp server
+Screen sizes: virtual=(1920, 1080) physical=(2560, 1417) drawable=(2560, 1417)
+Maximum texture size: 4096x4096
+INFO:renpy_warp_service:connected to renpy warp socket server on :40111
 
 Full traceback:
-  File "game/Game/_Data/Quests.rpy", line 8, in script
-    init 5 python:
+  File "renpy/common/_layout/screen_load_save.rpym", line 35, in script
+    $ ui.interact()
   File "renpy/ast.py", line 1187, in execute
     renpy.python.py_exec_bytecode(self.code.bytecode, self.hide, store=self.store)
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "renpy/python.py", line 1276, in py_exec_bytecode
     exec(bytecode, globals, locals)
     ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "game/Game/_Data/Quests.rpy", line 9, in <module>
-    char_quest(
-    ~~~~~~~~~~^
-        "meet_alice",
-        ^^^^^^^^^^^^^
-    ...<18 lines>...
-        ],
-        ^^
-    )
-    ^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 208, in char_quest
-    return define_quest(qid, **kwargs)
-           ~~~~~~~~~~~~^^^^^^^^^^^^^^^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 193, in define_quest
-    _quest_state(qid)
-    ~~~~~~~~~~~~^^^^^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 170, in _quest_state
-    state = quest_states.setdefault(qid, {})
-            ^^^^^^^^^^^^                    
-NameError: name 'quest_states' is not defined
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "renpy/bootstrap.py", line 401, in bootstrap
-    renpy.main.main()
-    ~~~~~~~~~~~~~~~^^
-  File "renpy/main.py", line 488, in main
-    node.execute_init()
-    ~~~~~~~~~~~~~~~~~^^
-  File "renpy/ast.py", line 1071, in execute_init
-    renpy.game.context().run(self.block[0])
-    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
-  File "game/Game/_Data/Quests.rpy", line 8, in script
-    init 5 python:
-  File "game/Game/_Data/Quests.rpy", line 8, in script
-    init 5 python:
-  File "renpy/display/error.py", line 135, in report_exception
-    renpy.game.invoke_in_new_context(
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
-        call_exception_screen,
-        ^^^^^^^^^^^^^^^^^^^^^^
-    ...<4 lines>...
-        ignore_action=ignore_action,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "renpy/game.py", line 285, in invoke_in_new_context
-    return callable(*args, **kwargs)
-           ~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "renpy/display/error.py", line 44, in call_exception_screen
-    return renpy.ui.interact(mouse="screen", type="screen", suppress_overlay=True, suppress_underlay=True)
-           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/common/_layout/screen_load_save.rpym", line 35, in <module>
+    $ ui.interact()
+      ~~~~~~~~~~~^^
   File "renpy/ui.py", line 306, in interact
     rv = renpy.game.interface.interact(roll_forward=roll_forward, **kwargs)
          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "renpy/display/core.py", line 2149, in interact
-    i()
-    ~^^
-  File "game/Engine/Images/Show_NPC.rpy", line 207, in _sync_visible_npcs_from_shown
-    for c in list(_visible_npcs.keys()):
-                  ^^^^^^^^^^^^^         
-NameError: name '_visible_npcs' is not defined
-
-While running game code:
-  File "game/Game/_Data/Quests.rpy", line 8, in script
-    init 5 python:
-  File "game/Game/_Data/Quests.rpy", line 9, in <module>
-    char_quest(
-    ~~~~~~~~~~^
-        "meet_alice",
-        ^^^^^^^^^^^^^
-    ...<18 lines>...
-        ],
-        ^^
+  File "renpy/display/core.py", line 2164, in interact
+    repeat, rv = self.interact_core(
+                 ~~~~~~~~~~~~~~~~~~^
+        preloads=preloads,
+        ^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        **kwargs,
+        ^^^^^^^^^
     )
     ^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 208, in char_quest
-    return define_quest(qid, **kwargs)
-           ~~~~~~~~~~~~^^^^^^^^^^^^^^^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 193, in define_quest
-    _quest_state(qid)
-    ~~~~~~~~~~~~^^^^^
-  File "game/Mechanics/Quest/Quest_Runtime.rpy", line 170, in _quest_state
-    state = quest_states.setdefault(qid, {})
-            ^^^^^^^^^^^^                    
-NameError: name 'quest_states' is not defined
+  File "renpy/display/core.py", line 2710, in interact_core
+    root_widget.visit_all(lambda d: d.per_interact())
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+[Previous line repeated 1 more time]
+  File "renpy/display/screen.py", line 503, in visit_all
+    callback(self)
+    ~~~~~~~~^^^^^^
+  File "renpy/display/core.py", line 2710, in <lambda>
+    root_widget.visit_all(lambda d: d.per_interact())
+                                    ~~~~~~~~~~~~~~^^ 
+  File "renpy/display/screen.py", line 514, in per_interact
+    self.update()
+    ~~~~~~~~~~~^^
+  File "renpy/display/screen.py", line 715, in update
+    self.screen.function(**self.scope)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 590, in execute
+    use file_slots(_("Save"), loading=False)
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 425, in execute
+    frame:
+  File "game/screens.rpy", line 428, in execute
+    hbox:
+  File "game/screens.rpy", line 434, in execute
+    frame:
+  File "game/screens.rpy", line 437, in execute
+    if scroll == "viewport":
+  File "game/screens.rpy", line 472, in execute
+    transclude
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 606, in execute
+    fixed:
+  File "game/screens.rpy", line 625, in execute
+    grid gui.file_slot_cols gui.file_slot_rows:
+  File "game/screens.rpy", line 633, in execute
+    for i in range(gui.file_slot_cols * gui.file_slot_rows):
+  File "game/screens.rpy", line 640, in execute
+    button:
+  File "game/screens.rpy", line 644, in execute
+    has vbox
+  File "game/screens.rpy", line 646, in execute
+    if FileLoadable(slot) and slot_status == "valid":
+  File "game/screens.rpy", line 649, in execute
+    frame:
+  File "game/screens.rpy", line 649, in keywords
+    frame:
+  File "renpy/python.py", line 1308, in py_eval
+    return py_eval_bytecode(code, globals, locals)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/python.py", line 1301, in py_eval_bytecode
+    return eval(bytecode, globals, locals)
+           ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "game/screens.rpy", line 650, in <module>
+    xysize (gui.thumbnail_width, gui.thumbnail_height)
+            ^^^^^^^^^^^^^^^^^^^                       
+AttributeError: 'StoreModule' object has no attribute 'thumbnail_width'
 
-During handling of the above exception, another exception occurred:
+While running game code:
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 590, in execute
+    use file_slots(_("Save"), loading=False)
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 425, in execute
+    frame:
+  File "game/screens.rpy", line 428, in execute
+    hbox:
+  File "game/screens.rpy", line 434, in execute
+    frame:
+  File "game/screens.rpy", line 437, in execute
+    if scroll == "viewport":
+  File "game/screens.rpy", line 472, in execute
+    transclude
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 606, in execute
+    fixed:
+  File "game/screens.rpy", line 625, in execute
+    grid gui.file_slot_cols gui.file_slot_rows:
+  File "game/screens.rpy", line 633, in execute
+    for i in range(gui.file_slot_cols * gui.file_slot_rows):
+  File "game/screens.rpy", line 640, in execute
+    button:
+  File "game/screens.rpy", line 644, in execute
+    has vbox
+  File "game/screens.rpy", line 646, in execute
+    if FileLoadable(slot) and slot_status == "valid":
+  File "game/screens.rpy", line 649, in execute
+    frame:
+  File "game/screens.rpy", line 649, in keywords
+    frame:
+  File "game/screens.rpy", line 650, in <module>
+    xysize (gui.thumbnail_width, gui.thumbnail_height)
+            ^^^^^^^^^^^^^^^^^^^                       
+AttributeError: 'StoreModule' object has no attribute 'thumbnail_width'
 
-Traceback (most recent call last):
-  File "game/Game/_Data/Quests.rpy", line 8, in script
-    init 5 python:
-  File "game/Game/_Data/Quests.rpy", line 8, in script
-    init 5 python:
-  File "game/Engine/Images/Show_NPC.rpy", line 207, in _sync_visible_npcs_from_shown
-    for c in list(_visible_npcs.keys()):
-                  ^^^^^^^^^^^^^         
-NameError: name '_visible_npcs' is not defined
-CODIUM False
-SYSTEM True
-['code.cmd', '-g', 'D:\\Projects\\Game Dev\\Renpy\\Project Tac\\traceback.txt:1']
+Full traceback:
+  File "renpy/common/_layout/screen_load_save.rpym", line 35, in script
+    $ ui.interact()
+  File "renpy/ast.py", line 1187, in execute
+    renpy.python.py_exec_bytecode(self.code.bytecode, self.hide, store=self.store)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/python.py", line 1276, in py_exec_bytecode
+    exec(bytecode, globals, locals)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/common/_layout/screen_load_save.rpym", line 35, in <module>
+    $ ui.interact()
+      ~~~~~~~~~~~^^
+  File "renpy/ui.py", line 306, in interact
+    rv = renpy.game.interface.interact(roll_forward=roll_forward, **kwargs)
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/display/core.py", line 2164, in interact
+    repeat, rv = self.interact_core(
+                 ~~~~~~~~~~~~~~~~~~^
+        preloads=preloads,
+        ^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "renpy/display/core.py", line 2710, in interact_core
+    root_widget.visit_all(lambda d: d.per_interact())
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+[Previous line repeated 1 more time]
+  File "renpy/display/screen.py", line 503, in visit_all
+    callback(self)
+    ~~~~~~~~^^^^^^
+  File "renpy/display/core.py", line 2710, in <lambda>
+    root_widget.visit_all(lambda d: d.per_interact())
+                                    ~~~~~~~~~~~~~~^^ 
+  File "renpy/display/screen.py", line 514, in per_interact
+    self.update()
+    ~~~~~~~~~~~^^
+  File "renpy/display/screen.py", line 715, in update
+    self.screen.function(**self.scope)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 590, in execute
+    use file_slots(_("Save"), loading=False)
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 425, in execute
+    frame:
+  File "game/screens.rpy", line 428, in execute
+    hbox:
+  File "game/screens.rpy", line 434, in execute
+    frame:
+  File "game/screens.rpy", line 437, in execute
+    if scroll == "viewport":
+  File "game/screens.rpy", line 472, in execute
+    transclude
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 606, in execute
+    fixed:
+  File "game/screens.rpy", line 625, in execute
+    grid gui.file_slot_cols gui.file_slot_rows:
+  File "game/screens.rpy", line 633, in execute
+    for i in range(gui.file_slot_cols * gui.file_slot_rows):
+  File "game/screens.rpy", line 640, in execute
+    button:
+  File "game/screens.rpy", line 644, in execute
+    has vbox
+  File "game/screens.rpy", line 646, in execute
+    if FileLoadable(slot) and slot_status == "valid":
+  File "game/screens.rpy", line 649, in execute
+    frame:
+  File "game/screens.rpy", line 649, in keywords
+    frame:
+  File "renpy/python.py", line 1308, in py_eval
+    return py_eval_bytecode(code, globals, locals)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/python.py", line 1301, in py_eval_bytecode
+    return eval(bytecode, globals, locals)
+           ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "game/screens.rpy", line 650, in <module>
+    xysize (gui.thumbnail_width, gui.thumbnail_height)
+            ^^^^^^^^^^^^^^^^^^^                       
+AttributeError: 'StoreModule' object has no attribute 'thumbnail_width'
+
+While loading <renpy.display.im.Image object ('assets/images/bg/smp_hallway_day1.webp') at 0x00000000013fd4c0>:
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 590, in execute
+    use file_slots(_("Save"), loading=False)
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 425, in execute
+    frame:
+  File "game/screens.rpy", line 428, in execute
+    hbox:
+  File "game/screens.rpy", line 434, in execute
+    frame:
+  File "game/screens.rpy", line 437, in execute
+    if scroll == "viewport":
+  File "game/screens.rpy", line 472, in execute
+    transclude
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 606, in execute
+    fixed:
+  File "game/screens.rpy", line 625, in execute
+    grid gui.file_slot_cols gui.file_slot_rows:
+  File "game/screens.rpy", line 633, in execute
+    for i in range(gui.file_slot_cols * gui.file_slot_rows):
+  File "game/screens.rpy", line 640, in execute
+    button:
+  File "game/screens.rpy", line 644, in execute
+    has vbox
+  File "game/screens.rpy", line 646, in execute
+    if FileLoadable(slot) and slot_status == "valid":
+  File "game/screens.rpy", line 649, in execute
+    frame:
+  File "game/screens.rpy", line 649, in keywords
+    frame:
+  File "game/screens.rpy", line 650, in <module>
+    xysize (gui.thumbnail_width, gui.thumbnail_height)
+            ^^^^^^^^^^^^^^^^^^^                       
+AttributeError: 'StoreModule' object has no attribute 'thumbnail_width'
+
+Full traceback:
+  File "renpy/common/_layout/screen_load_save.rpym", line 35, in script
+    $ ui.interact()
+  File "renpy/ast.py", line 1187, in execute
+    renpy.python.py_exec_bytecode(self.code.bytecode, self.hide, store=self.store)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/python.py", line 1276, in py_exec_bytecode
+    exec(bytecode, globals, locals)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/common/_layout/screen_load_save.rpym", line 35, in <module>
+    $ ui.interact()
+      ~~~~~~~~~~~^^
+  File "renpy/ui.py", line 306, in interact
+    rv = renpy.game.interface.interact(roll_forward=roll_forward, **kwargs)
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/display/core.py", line 2164, in interact
+    repeat, rv = self.interact_core(
+                 ~~~~~~~~~~~~~~~~~~^
+        preloads=preloads,
+        ^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "renpy/display/core.py", line 2710, in interact_core
+    root_widget.visit_all(lambda d: d.per_interact())
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+[Previous line repeated 1 more time]
+  File "renpy/display/screen.py", line 503, in visit_all
+    callback(self)
+    ~~~~~~~~^^^^^^
+  File "renpy/display/core.py", line 2710, in <lambda>
+    root_widget.visit_all(lambda d: d.per_interact())
+                                    ~~~~~~~~~~~~~~^^ 
+  File "renpy/display/screen.py", line 514, in per_interact
+    self.update()
+    ~~~~~~~~~~~^^
+  File "renpy/display/screen.py", line 715, in update
+    self.screen.function(**self.scope)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 590, in execute
+    use file_slots(_("Save"), loading=False)
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 425, in execute
+    frame:
+  File "game/screens.rpy", line 428, in execute
+    hbox:
+  File "game/screens.rpy", line 434, in execute
+    frame:
+  File "game/screens.rpy", line 437, in execute
+    if scroll == "viewport":
+  File "game/screens.rpy", line 472, in execute
+    transclude
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 606, in execute
+    fixed:
+  File "game/screens.rpy", line 625, in execute
+    grid gui.file_slot_cols gui.file_slot_rows:
+  File "game/screens.rpy", line 633, in execute
+    for i in range(gui.file_slot_cols * gui.file_slot_rows):
+  File "game/screens.rpy", line 640, in execute
+    button:
+  File "game/screens.rpy", line 644, in execute
+    has vbox
+  File "game/screens.rpy", line 646, in execute
+    if FileLoadable(slot) and slot_status == "valid":
+  File "game/screens.rpy", line 649, in execute
+    frame:
+  File "game/screens.rpy", line 649, in keywords
+    frame:
+  File "renpy/python.py", line 1308, in py_eval
+    return py_eval_bytecode(code, globals, locals)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/python.py", line 1301, in py_eval_bytecode
+    return eval(bytecode, globals, locals)
+           ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "game/screens.rpy", line 650, in <module>
+    xysize (gui.thumbnail_width, gui.thumbnail_height)
+            ^^^^^^^^^^^^^^^^^^^                       
+AttributeError: 'StoreModule' object has no attribute 'thumbnail_width'
+
+While loading <renpy.display.im.Image object ('assets/images/bg/smp_hallway_day1.webp') at 0x00000000013f95b0>:
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 590, in execute
+    use file_slots(_("Save"), loading=False)
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 425, in execute
+    frame:
+  File "game/screens.rpy", line 428, in execute
+    hbox:
+  File "game/screens.rpy", line 434, in execute
+    frame:
+  File "game/screens.rpy", line 437, in execute
+    if scroll == "viewport":
+  File "game/screens.rpy", line 472, in execute
+    transclude
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 606, in execute
+    fixed:
+  File "game/screens.rpy", line 625, in execute
+    grid gui.file_slot_cols gui.file_slot_rows:
+  File "game/screens.rpy", line 633, in execute
+    for i in range(gui.file_slot_cols * gui.file_slot_rows):
+  File "game/screens.rpy", line 640, in execute
+    button:
+  File "game/screens.rpy", line 644, in execute
+    has vbox
+  File "game/screens.rpy", line 646, in execute
+    if FileLoadable(slot) and slot_status == "valid":
+  File "game/screens.rpy", line 649, in execute
+    frame:
+  File "game/screens.rpy", line 649, in keywords
+    frame:
+  File "game/screens.rpy", line 650, in <module>
+    xysize (gui.thumbnail_width, gui.thumbnail_height)
+            ^^^^^^^^^^^^^^^^^^^                       
+AttributeError: 'StoreModule' object has no attribute 'thumbnail_width'
+
+Full traceback:
+  File "renpy/common/_layout/screen_load_save.rpym", line 35, in script
+    $ ui.interact()
+  File "renpy/ast.py", line 1187, in execute
+    renpy.python.py_exec_bytecode(self.code.bytecode, self.hide, store=self.store)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/python.py", line 1276, in py_exec_bytecode
+    exec(bytecode, globals, locals)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/common/_layout/screen_load_save.rpym", line 35, in <module>
+    $ ui.interact()
+      ~~~~~~~~~~~^^
+  File "renpy/ui.py", line 306, in interact
+    rv = renpy.game.interface.interact(roll_forward=roll_forward, **kwargs)
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/display/core.py", line 2164, in interact
+    repeat, rv = self.interact_core(
+                 ~~~~~~~~~~~~~~~~~~^
+        preloads=preloads,
+        ^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "renpy/display/core.py", line 2710, in interact_core
+    root_widget.visit_all(lambda d: d.per_interact())
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+[Previous line repeated 1 more time]
+  File "renpy/display/screen.py", line 503, in visit_all
+    callback(self)
+    ~~~~~~~~^^^^^^
+  File "renpy/display/core.py", line 2710, in <lambda>
+    root_widget.visit_all(lambda d: d.per_interact())
+                                    ~~~~~~~~~~~~~~^^ 
+  File "renpy/display/screen.py", line 514, in per_interact
+    self.update()
+    ~~~~~~~~~~~^^
+  File "renpy/display/screen.py", line 715, in update
+    self.screen.function(**self.scope)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 590, in execute
+    use file_slots(_("Save"), loading=False)
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 425, in execute
+    frame:
+  File "game/screens.rpy", line 428, in execute
+    hbox:
+  File "game/screens.rpy", line 434, in execute
+    frame:
+  File "game/screens.rpy", line 437, in execute
+    if scroll == "viewport":
+  File "game/screens.rpy", line 472, in execute
+    transclude
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 606, in execute
+    fixed:
+  File "game/screens.rpy", line 625, in execute
+    grid gui.file_slot_cols gui.file_slot_rows:
+  File "game/screens.rpy", line 633, in execute
+    for i in range(gui.file_slot_cols * gui.file_slot_rows):
+  File "game/screens.rpy", line 640, in execute
+    button:
+  File "game/screens.rpy", line 644, in execute
+    has vbox
+  File "game/screens.rpy", line 646, in execute
+    if FileLoadable(slot) and slot_status == "valid":
+  File "game/screens.rpy", line 649, in execute
+    frame:
+  File "game/screens.rpy", line 649, in keywords
+    frame:
+  File "renpy/python.py", line 1308, in py_eval
+    return py_eval_bytecode(code, globals, locals)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/python.py", line 1301, in py_eval_bytecode
+    return eval(bytecode, globals, locals)
+           ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "game/screens.rpy", line 650, in <module>
+    xysize (gui.thumbnail_width, gui.thumbnail_height)
+            ^^^^^^^^^^^^^^^^^^^                       
+AttributeError: 'StoreModule' object has no attribute 'thumbnail_width'
+
+While running game code:
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 590, in execute
+    use file_slots(_("Save"), loading=False)
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 425, in execute
+    frame:
+  File "game/screens.rpy", line 428, in execute
+    hbox:
+  File "game/screens.rpy", line 434, in execute
+    frame:
+  File "game/screens.rpy", line 437, in execute
+    if scroll == "viewport":
+  File "game/screens.rpy", line 472, in execute
+    transclude
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 606, in execute
+    fixed:
+  File "game/screens.rpy", line 625, in execute
+    grid gui.file_slot_cols gui.file_slot_rows:
+  File "game/screens.rpy", line 633, in execute
+    for i in range(gui.file_slot_cols * gui.file_slot_rows):
+  File "game/screens.rpy", line 640, in execute
+    button:
+  File "game/screens.rpy", line 644, in execute
+    has vbox
+  File "game/screens.rpy", line 646, in execute
+    if FileLoadable(slot) and slot_status == "valid":
+  File "game/screens.rpy", line 649, in execute
+    frame:
+  File "game/screens.rpy", line 649, in keywords
+    frame:
+  File "game/screens.rpy", line 650, in <module>
+    xysize (gui.thumbnail_width, gui.thumbnail_height)
+            ^^^^^^^^^^^^^^^^^^^                       
+AttributeError: 'StoreModule' object has no attribute 'thumbnail_width'
+
+Full traceback:
+  File "renpy/common/_layout/screen_load_save.rpym", line 35, in script
+    $ ui.interact()
+  File "renpy/ast.py", line 1187, in execute
+    renpy.python.py_exec_bytecode(self.code.bytecode, self.hide, store=self.store)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/python.py", line 1276, in py_exec_bytecode
+    exec(bytecode, globals, locals)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/common/_layout/screen_load_save.rpym", line 35, in <module>
+    $ ui.interact()
+      ~~~~~~~~~~~^^
+  File "renpy/ui.py", line 306, in interact
+    rv = renpy.game.interface.interact(roll_forward=roll_forward, **kwargs)
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/display/core.py", line 2164, in interact
+    repeat, rv = self.interact_core(
+                 ~~~~~~~~~~~~~~~~~~^
+        preloads=preloads,
+        ^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "renpy/display/core.py", line 2710, in interact_core
+    root_widget.visit_all(lambda d: d.per_interact())
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "renpy/display/displayable.py", line 460, in visit_all
+    d.visit_all(callback, seen)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+[Previous line repeated 1 more time]
+  File "renpy/display/screen.py", line 503, in visit_all
+    callback(self)
+    ~~~~~~~~^^^^^^
+  File "renpy/display/core.py", line 2710, in <lambda>
+    root_widget.visit_all(lambda d: d.per_interact())
+                                    ~~~~~~~~~~~~~~^^ 
+  File "renpy/display/screen.py", line 514, in per_interact
+    self.update()
+    ~~~~~~~~~~~^^
+  File "renpy/display/screen.py", line 715, in update
+    self.screen.function(**self.scope)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 590, in execute
+    use file_slots(_("Save"), loading=False)
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 425, in execute
+    frame:
+  File "game/screens.rpy", line 428, in execute
+    hbox:
+  File "game/screens.rpy", line 434, in execute
+    frame:
+  File "game/screens.rpy", line 437, in execute
+    if scroll == "viewport":
+  File "game/screens.rpy", line 472, in execute
+    transclude
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 606, in execute
+    fixed:
+  File "game/screens.rpy", line 625, in execute
+    grid gui.file_slot_cols gui.file_slot_rows:
+  File "game/screens.rpy", line 633, in execute
+    for i in range(gui.file_slot_cols * gui.file_slot_rows):
+  File "game/screens.rpy", line 640, in execute
+    button:
+  File "game/screens.rpy", line 644, in execute
+    has vbox
+  File "game/screens.rpy", line 646, in execute
+    if FileLoadable(slot) and slot_status == "valid":
+  File "game/screens.rpy", line 649, in execute
+    frame:
+  File "game/screens.rpy", line 649, in keywords
+    frame:
+  File "renpy/python.py", line 1308, in py_eval
+    return py_eval_bytecode(code, globals, locals)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "renpy/python.py", line 1301, in py_eval_bytecode
+    return eval(bytecode, globals, locals)
+           ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "game/screens.rpy", line 650, in <module>
+    xysize (gui.thumbnail_width, gui.thumbnail_height)
+            ^^^^^^^^^^^^^^^^^^^                       
+AttributeError: 'StoreModule' object has no attribute 'thumbnail_width'
+
+While running game code:
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 586, in execute
+    screen save():
+  File "game/screens.rpy", line 590, in execute
+    use file_slots(_("Save"), loading=False)
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 600, in execute
+    screen file_slots(title, loading=False):
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 416, in execute
+    screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
+  File "game/screens.rpy", line 425, in execute
+    frame:
+  File "game/screens.rpy", line 428, in execute
+    hbox:
+  File "game/screens.rpy", line 434, in execute
+    frame:
+  File "game/screens.rpy", line 437, in execute
+    if scroll == "viewport":
+  File "game/screens.rpy", line 472, in execute
+    transclude
+  File "game/screens.rpy", line 604, in execute
+    use game_menu(title):
+  File "game/screens.rpy", line 606, in execute
+    fixed:
+  File "game/screens.rpy", line 625, in execute
+    grid gui.file_slot_cols gui.file_slot_rows:
+  File "game/screens.rpy", line 633, in execute
+    for i in range(gui.file_slot_cols * gui.file_slot_rows):
+  File "game/screens.rpy", line 640, in execute
+    button:
+  File "game/screens.rpy", line 644, in execute
+    has vbox
+  File "game/screens.rpy", line 646, in execute
+    if FileLoadable(slot) and slot_status == "valid":
+  File "game/screens.rpy", line 649, in execute
+    frame:
+  File "game/screens.rpy", line 649, in keywords
+    frame:
+  File "game/screens.rpy", line 650, in <module>
+    xysize (gui.thumbnail_width, gui.thumbnail_height)
+            ^^^^^^^^^^^^^^^^^^^                       
+AttributeError: 'StoreModule' object has no attribute 'thumbnail_width'
+INFO:renpy_warp_service:closing websocket connection :40111
+INFO:renpy_warp_service:connection replaced, service exiting
+INFO:renpy_warp_service:service closed
+Resetting cache.
+Early init took 23 ms
+Loading error handling took 40 ms
+Loading script took 996 ms
+Loading save slot metadata took 137 ms
+Loading persistent took 1 ms
+Running init code took 72 ms
+Loading analysis data took 22 ms
+Analyze and compile ATL took 4 ms
+Reloading save slot metadata took 117 ms
+Dump and make backups took 0 ms
+Cleaning cache took 0 ms
+Making clean stores took 1 ms
+Initial gc took 142 ms
+DPI scale factor: 1.000000
+nvdrs: Loaded, about to disable thread optimizations.
+nvdrs: Disabled thread optimizations.
+Creating interface object took 183 ms
+Init translation took 0 ms
+Cleaning stores took 0 ms
+Load screen analysis took 113 ms
+Analyze screens took 3 ms
+Save screen analysis took 0 ms
+Save pyanalysis took 0 ms
+Save bytecode took 0 ms
+Running _start took 0 ms
+Interface start took 626 ms
+
+Initializing gl2 renderer:
+primary display bounds: (0, 0, 2560, 1440)
+swap interval: 1 frames
+Windowed mode.
+Vendor: 'NVIDIA Corporation'
+Renderer: 'NVIDIA GeForce GTX 1660 SUPER/PCIe/SSE2'
+Version: '4.6.0 NVIDIA 610.47'
+Display Info: <Info({'bitsize': 32, 'bytesize': 4, 'masks': (16711680, 65280, 255, 0), 'shifts': (16, 8, 0, 0), 'losses': (0, 0, 0, 8), 'current_w': 2560, 'current_h': 1440, 'refresh_rate': 165, 'hw': False, 'wm': True, 'video_mem': 268435456, 'blit_hw': False, 'blit_hw_CC': False, 'blit_hw_A': False, 'blit_sw': False, 'blit_sw_CC': False, 'blit_sw_A': False})>
+Screen sizes: virtual=(1920, 1080) physical=(2560, 1417) drawable=(2560, 1417)
+Maximum texture size: 4096x4096
+INFO:renpy_warp_service:service thread started. periodically scanning ports for warp server
+Screen sizes: virtual=(1920, 1080) physical=(2560, 1417) drawable=(2560, 1417)
+INFO:renpy_warp_service:connected to renpy warp socket server on :40111
+Maximum texture size: 4096x4096
+Screen sizes: virtual=(1920, 1080) physical=(2560, 1417) drawable=(2560, 1417)
+Maximum texture size: 4096x4096
+INFO:renpy_warp_service:closing websocket connection :40111
+INFO:renpy_warp_service:connection replaced, service exiting
+INFO:renpy_warp_service:service closed

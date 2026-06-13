@@ -13,6 +13,7 @@
 default persistent.galleryunlocks = set()
 default persistent.endingsseen    = set()
 default persistent.achievements   = set()
+default persistent.achievement_progress = {}
 
 
 init python:
@@ -26,7 +27,12 @@ init python:
         persistent.galleryunlocks.add(name)
 
     def is_gallery_unlocked(name):
-        return name in persistent.galleryunlocks
+        if name in persistent.galleryunlocks:
+            return True
+        try:
+            return gallery_unlock_available(name)
+        except Exception:
+            return False
 
     # --- endings ------------------------------------------------------------
     def mark_ending(ending_id):
@@ -39,7 +45,14 @@ init python:
     def grant_achievement(name):
         if name not in persistent.achievements:
             persistent.achievements.add(name)
-            renpy.notify("Achievement unlocked: %s" % name)
+            try:
+                notify_modal("Achievement Unlocked", achievement_title(name), kind="achievement", sound="quest_major", color="#ffd27a")
+            except Exception:
+                renpy.notify("Achievement unlocked: %s" % name)
+            try:
+                request_update_state("achievement", achievement=name)
+            except Exception:
+                pass
 
     def has_achievement(name):
         return name in persistent.achievements

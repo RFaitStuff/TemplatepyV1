@@ -353,6 +353,7 @@ screen main_menu():
     tag menu
 
     add gui.main_menu_background
+    use main_menu_visual_layers()
 
     ## This empty frame darkens the main menu.
     frame:
@@ -586,17 +587,17 @@ screen save():
 
     tag menu
 
-    use file_slots(_("Save"))
+    use file_slots(_("Save"), loading=False)
 
 
 screen load():
 
     tag menu
 
-    use file_slots(_("Load"))
+    use file_slots(_("Load"), loading=True)
 
 
-screen file_slots(title):
+screen file_slots(title, loading=False):
 
     default page_name_value = FilePageNameInputValue(pattern=_("Page {}"), auto=_("Automatic saves"), quick=_("Quick saves"))
 
@@ -632,19 +633,42 @@ screen file_slots(title):
                 for i in range(gui.file_slot_cols * gui.file_slot_rows):
 
                     $ slot = i + 1
+                    $ slot_status = save_slot_status(slot) if loading else ("valid" if FileLoadable(slot) else "empty")
+                    $ slot_summary = save_slot_summary(slot) if FileLoadable(slot) else ""
+                    $ can_use_slot = (not loading) or slot_status == "valid"
+                    $ _thumb_size = (getattr(config, "thumbnail_width", 384), getattr(config, "thumbnail_height", 216))
 
                     button:
+                        sensitive can_use_slot
                         action FileAction(slot)
 
                         has vbox
 
-                        add FileScreenshot(slot) xalign 0.5
+                        if FileLoadable(slot) and slot_status == "valid":
+                            add FileScreenshot(slot) xalign 0.5
+                        else:
+                            frame:
+                                xysize _thumb_size
+                                background "#11131f"
+                                if slot_status == "foreign":
+                                    text _("Different project") align (0.5, 0.5) text_align 0.5 size 20
+                                elif slot_status == "newer":
+                                    text _("Newer save version") align (0.5, 0.5) text_align 0.5 size 20
+                                elif slot_status == "empty":
+                                    text _("Empty") align (0.5, 0.5) text_align 0.5 size 20
+                                else:
+                                    text _("Unavailable") align (0.5, 0.5) text_align 0.5 size 20
 
                         text FileTime(slot, format=_("{#file_time}%A, %B %d %Y, %H:%M"), empty=_("empty slot")):
                             style "slot_time_text"
 
-                        text FileSaveName(slot):
-                            style "slot_name_text"
+                        if slot_summary:
+                            text slot_summary:
+                                style "slot_name_text"
+                                size 18
+                        else:
+                            text FileSaveName(slot):
+                                style "slot_name_text"
 
                         key "save_delete" action FileDelete(slot)
 
@@ -757,6 +781,17 @@ screen preferences():
                     label _("Gameplay")
                     textbutton _("Auto-Forward") action Preference("auto-forward", "toggle")
                     textbutton ("HUD: ON" if hud_visible else "HUD: OFF") action ToggleVariable("hud_visible")
+                    textbutton ("Quick Menu: ON" if quick_menu else "Quick Menu: OFF") action ToggleVariable("quick_menu")
+                    textbutton ("Screenshot Mode: ON" if screenshot_mode else "Screenshot Mode: OFF") action Function(toggle_screenshot_mode)
+                    textbutton _("Player Setup") action ShowMenu("player_identity_setup")
+
+                vbox:
+                    style_prefix "check"
+                    label _("Accessibility")
+                    textbutton ("Text Effects: ON" if text_effects_enabled else "Text Effects: OFF") action ToggleVariable("text_effects_enabled")
+                    textbutton ("Glitch Text: OFF" if persistent.text_glitch_disabled else "Glitch Text: ON") action SetField(persistent, "text_glitch_disabled", not persistent.text_glitch_disabled)
+                    textbutton _("Reset Tutorials") action Function(reset_phone_tutorials)
+                    textbutton _("Reset Startup Notices") action Function(reset_startup_screens)
 
                 vbox:
                     style_prefix "radio"

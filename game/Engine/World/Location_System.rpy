@@ -13,6 +13,10 @@ init -3 python:
 default unlocked_rooms    = set()
 default current_location  = "homeroom"
 default _location_session = {}
+default location_visits   = {}
+default location_visit_days = {}
+default _last_entered_location = None
+default _last_location_enter_context = {}
 
 
 # =============================================================================
@@ -60,6 +64,7 @@ init -3 python:
         loc.setdefault("talk", {})
         loc.setdefault("exits", [])     # [{"to": loc_id, "label": "Hallway", "pos": (x,y), "size": (w,h)}, ...]
         loc.setdefault("objects", [])   # [{"id": iid, "pos": (x,y), "size": (w,h)}, ...]
+        loc.setdefault("layers", [])    # Optional visual overlays for exploration.
         loc.update(extra)
 
         if loc_id not in location_order:
@@ -71,7 +76,7 @@ init -3 python:
         if unlocked:
             unlocked_rooms_init.add(loc_id)
 
-    def configure_location(loc_id, positions=None, items=None, on_enter=None, talk=None, exits=None, objects=None, **extra):
+    def configure_location(loc_id, positions=None, items=None, on_enter=None, talk=None, exits=None, objects=None, layers=None, **extra):
         # Add per-location runtime data (called from the location's own file).
         # positions - {char_id: [(xalign, yalign), ...]}
         # items     - [{item, while_flag, hide_flag, label, pos}, ...]
@@ -99,6 +104,8 @@ init -3 python:
             loc["exits"] = list(exits)
         if objects is not None:
             loc["objects"] = list(objects)
+        if layers is not None:
+            loc["layers"] = list(layers)
         loc.update(extra)
 
 
@@ -126,6 +133,29 @@ init python:
 
     def location_bg(loc_id=None):
         return location_data(loc_id).get("bg", "")
+
+    def location_layers(loc_id=None, slot=None):
+        out = []
+        for layer in location_data(loc_id).get("layers", []) or []:
+            if slot is not None and layer.get("slot", "overlay") != slot:
+                continue
+            requires = layer.get("requires") or layer.get("show_when")
+            if requires is not None:
+                try:
+                    if not meets_requirements(requires):
+                        continue
+                except Exception:
+                    continue
+            avail = layer.get("available_if")
+            if avail is not None:
+                try:
+                    if not avail():
+                        continue
+                except Exception:
+                    continue
+            out.append(layer)
+        out.sort(key=lambda item: item.get("order", 0))
+        return out
 
     def location_area_id(loc_id=None):
         return location_data(loc_id).get("area")
@@ -215,6 +245,9 @@ init python:
         loc = location_data(loc_id)
         out = []
         for it in loc.get("items", []):
+            requires = it.get("requires") or it.get("show_when") or it.get("unlock_when")
+            if requires is not None and not meets_requirements(requires):
+                continue
             flag = it.get("while_flag")
             if flag and not has_flag(flag):
                 continue
@@ -227,6 +260,55 @@ init python:
     def location_on_enter_label(loc_id=None):
         return location_data(loc_id).get("on_enter")
 
+    def location_first_visit_label(loc_id=None):
+        return location_data(loc_id).get("first_visit")
+
+    def location_first_visit_today_label(loc_id=None):
+        return location_data(loc_id).get("first_visit_today")
+
+    def location_main_loop_label(loc_id=None):
+        return location_data(loc_id).get("main_loop")
+
     def location_talk_label(char, loc_id=None):
         # Per-location override label for talking to `char`. None if not set.
         return location_data(loc_id).get("talk", {}).get(char)
+
+    def record_location_entry(loc_id=None):
+        global _last_entered_location, _last_location_enter_context
+        loc_id = loc_id or current_location
+        if _last_entered_location == loc_id:
+            return False
+        previous_count = location_visits.get(loc_id, 0)
+        today = globals().get("day", 0)
+        previous_day = location_visit_days.get(loc_id)
+        location_visits[loc_id] = previous_count + 1
+        location_visit_days[loc_id] = today
+        _last_entered_location = loc_id
+        _last_location_enter_context = {
+            "location": loc_id,
+            "first_visit": previous_count == 0,
+            "first_visit_today": previous_day != today,
+            "visit_count": previous_count + 1,
+        }
+        try:
+            emit("location_entered", loc_id)
+        except Exception:
+            pass
+        return True
+
+    def location_visit_count(loc_id=None):
+        return location_visits.get(loc_id or current_location, 0)
+
+    def first_visit(loc_id=None):
+        loc_id = loc_id or current_location
+        ctx = _last_location_enter_context or {}
+        if ctx.get("location") == loc_id:
+            return bool(ctx.get("first_visit"))
+        return location_visits.get(loc_id, 0) == 0
+
+    def first_visit_today(loc_id=None):
+        loc_id = loc_id or current_location
+        ctx = _last_location_enter_context or {}
+        if ctx.get("location") == loc_id:
+            return bool(ctx.get("first_visit_today"))
+        return location_visit_days.get(loc_id) != globals().get("day", 0)
