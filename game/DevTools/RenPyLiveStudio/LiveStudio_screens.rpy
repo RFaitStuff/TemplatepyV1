@@ -1176,7 +1176,7 @@ screen live_studio_extension_workspace():
                 yfill True
                 frame:
                     style "live_studio_panel_alt"
-                    xsize 320
+                    xsize 300
                     yfill True
                     viewport:
                         mousewheel True
@@ -1186,20 +1186,68 @@ screen live_studio_extension_workspace():
                         vbox:
                             spacing 6
                             text "Commands" style "live_studio_heading"
-                            for command in live_studio.extension_commands(ext):
+                            text "Search commands" style "live_studio_muted_text"
+                            frame:
+                                style "live_studio_property_input_frame"
+                                xfill True
+                                input value live_studio.extension_filter_input(ext.get("id"), "command") copypaste True style "live_studio_property_input"
+                            vbox:
+                                spacing 3
+                                for category in live_studio.extension_command_categories(ext):
+                                    textbutton category action Function(live_studio.set_selected_extension_category, ext.get("id"), category) selected live_studio.selected_extension_category(ext) == category style "live_studio_compact_button"
+                            for command in live_studio.filtered_extension_commands(ext):
                                 button:
                                     style "live_studio_tool_button"
-                                    action Function(live_studio.run_extension_command, ext.get("id"), command.get("id"))
+                                    action (Confirm("This command can write to source files after creating a backup. Continue?", Function(live_studio.run_extension_command, ext.get("id"), command.get("id"))) if command.get("writes") else Function(live_studio.run_extension_command, ext.get("id"), command.get("id")))
                                     xfill True
                                     vbox:
                                         spacing 2
-                                        text command.get("title", command.get("id", "Command")) style "live_studio_button_text"
+                                        text (command.get("title", command.get("id", "Command")) + ("  [writes]" if command.get("writes") else "")) style "live_studio_button_text"
                                         if command.get("description"):
                                             text live_studio.safe_display_text(command.get("description"), 42) style "live_studio_muted_text"
                             add Solid("#24303e", xsize=290, ysize=1)
                             text "Registry Snapshot" style "live_studio_heading"
                             for row in live_studio.extension_summary_rows(ext):
                                 text live_studio.safe_display_text("{}: {}".format(row.get("label", ""), row.get("value", "")), 54) style "live_studio_muted_text"
+
+                frame:
+                    style "live_studio_panel_alt"
+                    xsize 330
+                    yfill True
+                    vbox:
+                        spacing 6
+                        hbox:
+                            text "Project Files" style "live_studio_heading" yalign 0.5
+                            null width 1 xfill True
+                            textbutton "Preview" action Function(live_studio.preview_selected_extension_file) sensitive bool(live_studio.selected_extension_file(ext)) style "live_studio_compact_button"
+                        hbox:
+                            spacing 3
+                            for domain in live_studio.extension_file_domains(ext):
+                                textbutton domain action Function(live_studio.set_selected_extension_file_domain, ext.get("id"), domain) selected live_studio.selected_extension_file_domain(ext) == domain style "live_studio_compact_button"
+                        text "Search files" style "live_studio_muted_text"
+                        frame:
+                            style "live_studio_property_input_frame"
+                            xfill True
+                            input value live_studio.extension_filter_input(ext.get("id"), "file") copypaste True style "live_studio_property_input"
+                        viewport:
+                            mousewheel True
+                            draggable True
+                            scrollbars "vertical"
+                            yfill True
+                            vbox:
+                                spacing 2
+                                for file_row in live_studio.filtered_extension_file_rows(ext):
+                                    $ file_id = file_row.get("id", "")
+                                    $ selected_file = live_studio.selected_extension_file(ext) == file_id
+                                    button:
+                                        style "live_studio_tree_button"
+                                        selected selected_file
+                                        action Function(live_studio.set_selected_extension_file, ext.get("id"), file_id)
+                                        xfill True
+                                        vbox:
+                                            spacing 1
+                                            text live_studio.safe_display_text(file_row.get("label", file_id), 34) style "live_studio_tree_button_text"
+                                            text live_studio.safe_display_text("{} · {}".format(file_row.get("domain", ""), file_row.get("path", "")), 42) style "live_studio_muted_text"
 
                 frame:
                     style "live_studio_panel_alt"
@@ -1211,6 +1259,7 @@ screen live_studio_extension_workspace():
                             text live_studio.extension_preview_title() style "live_studio_heading" yalign 0.5
                             null width 1 xfill True
                             textbutton "Copy" action Function(live_studio.copy_extension_preview) sensitive bool(live_studio.extension_preview_text()) style "live_studio_compact_button"
+                            textbutton "Apply to File" action Confirm("Back up the selected file and append the generated preview?", Function(live_studio.apply_extension_preview)) sensitive bool(live_studio.extension_preview_text() and live_studio.selected_extension_file(ext)) style "live_studio_compact_button"
                         viewport:
                             mousewheel True
                             draggable True

@@ -15,7 +15,39 @@ Disable `ENABLED` in `LiveStudio_config.rpy`, or remove the folder, before shipp
 
 Live Studio has a lightweight extension registry. The core editor stays portable for normal Ren'Py projects, while project-specific engines can add their own bottom-workspace tab, commands, validation, and generated code snippets.
 
-The bundled Project Tac extension appears only when the current project exposes `project_save_id = "project_tac"`. It can refresh Project Tac registries, validate quest targets, generate `location_package`, `object_spot`, `create_quest`, dialogue, branch, and parallax-ready snippets, and turn the selected canvas bounds into an editable interactable starter.
+Extensions live under `RenPyLiveStudio/Extension/`.
+
+Extension commands can declare categories. The extension workspace shows category filters above the command list so large project integrations can stay navigable instead of becoming one long tool dump.
+
+Extension file rows can also declare a `domain`. The Project Files panel shows domain filters so large source indexes can be narrowed to Content, Data, Engine, Mechanics, Root UI, DevTools, or whatever domains another extension provides.
+
+Both extension commands and extension files support live text filtering. Command search checks command ids, titles, descriptions, and categories; file search checks file ids, labels, paths, and domains.
+
+The bundled Project Tac extension appears only when the current project exposes `project_save_id = "project_tac"`. It can refresh Project Tac registries, index Engine/Mechanics/Data/Content/UI source files, preview those files inside Studio, validate quest targets, generate `location_package`, `object_spot`, `create_quest`, dialogue, branch, inventory, gallery, minigame, image-locator, text-effect, and parallax-ready snippets, and turn the selected canvas bounds into an editable interactable starter.
+
+When generated code is applied to a selected file, the extension creates a timestamped backup under `Backup/LiveStudio` beside that source file before writing. Engine and mechanic files are indexed for reference; the default writable set is content/data/root UI files and Engine UI files.
+
+Project Tac commands with `[writes]` are typed writers. They back up the target file and place generated code into the matching project surface: quest snippets are inserted inside `Game/_Data/Quests.rpy`, item definitions inside `Game/_Data/Items.rpy`, and dialogue/branch/gallery/item-use labels into selected content files or sensible defaults. The generic **Apply to File** button still exists for deliberate scratch appends.
+
+Interactable writing is location-aware. When a selection is converted to an interactable, the extension inserts the generated `object_spot(...)` into the target location package's `objects=[...]` list, creates that list before `exits=[...]` when the room does not have one yet, and appends the inspect label as normal content script.
+
+The Project Tac tab also maps runtime `current_location` back to the content file that defines it. The mapped file is marked `[current]`, sorted to the top of the file list when known, and can be selected with **Select Current Location File**. Interactable and item-use writers prefer that current-location file when no matching content file is manually selected.
+
+Registry source maps trace author data back to source files and line numbers for areas, location definitions, characters, items, item uses, quests, gallery scenes, minigames, perks, and achievements. Use **Registry Source Report** to inspect those mappings, or the **Open ... Data** commands to jump straight to the core Project Tac data files.
+
+Content labels under `Game/Content` are also mapped by source file and content kind. **Content Label Report** shows story, dialogue, character interaction, and world interaction labels. **File Coverage Report** lists every indexed `.rpy` file and marks whether Live Studio treats it as preview-only or writable with backups.
+
+UI source maps cover root `screens.rpy`, root `gui.rpy`, and Project Tac UI/Dialogue/Image engine files. **UI Source Report** lists screens, styles, transforms, image declarations, GUI defines, and defaults with source locations. Quick open commands jump directly to root screens, GUI config, Project UI screens, HUD UI, and Locations UI.
+
+Engine and Mechanics API maps scan callable helpers, classes, screens, labels, defaults, defines, and transforms under `Engine/` and `Mechanics/`. **Engine API Report** shows those source locations, and quick open commands jump to the location engine, location package helpers, interactables, dialogue engine, image locator, quest runtime, inventory mechanic, and time/stamina mechanic.
+
+The Project Tac tab also has direct source helpers for selected, source-backed UI widgets:
+
+- **Preview Source Block** shows the source block captured for the selected widget.
+- **Preview Property Patch** turns local Live Studio property overrides into screen-language property lines.
+- **Apply Property Patch** backs up the source file and replaces the exact captured block with the patched block.
+
+This direct patch path is intentionally conservative. It only writes when a selected item has recoverable source metadata and an exact block match in the current source file.
 
 This keeps the base editor useful for almost any Ren'Py project while letting Project Tac behave more like a game-design engine layered on top of the normal Ren'Py runtime.
 
