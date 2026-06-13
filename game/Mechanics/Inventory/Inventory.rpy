@@ -380,3 +380,72 @@ init python:
         text = data.get("desc") or data.get("name") or item_id
         renpy.notify(text)
         return False
+
+    def inventory_validation_issues():
+        issues = []
+
+        for item_id, data in item_defs.items():
+            if not data.get("name"):
+                issues.append("Item '{}' has no display name.".format(item_id))
+            tags = data.get("tags", [])
+            if tags is None:
+                continue
+            if not isinstance(tags, (list, tuple, set)):
+                issues.append("Item '{}' tags should be a list/tuple/set.".format(item_id))
+            for key in ("show_when", "hidden_until", "use_when"):
+                requirement = data.get(key)
+                if requirement:
+                    try:
+                        first_missing_requirement(requirement)
+                    except Exception:
+                        issues.append("Item '{}' has invalid requirement '{}'.".format(item_id, key))
+            for key in ("use_label", "examine_label"):
+                label = data.get(key)
+                if label and not renpy.has_label(label):
+                    issues.append("Item '{}' {} points to missing label '{}'.".format(item_id, key, label))
+
+        for (item_id, target), data in item_use_defs.items():
+            if item_id != "*" and item_id not in item_defs:
+                issues.append("Item use '{} -> {}' references missing item.".format(item_id, target))
+            label = data.get("label")
+            if label and not renpy.has_label(label):
+                issues.append("Item use '{} -> {}' points to missing label '{}'.".format(item_id, target, label))
+            requirement = data.get("requires")
+            if requirement:
+                try:
+                    first_missing_requirement(requirement)
+                except Exception:
+                    issues.append("Item use '{} -> {}' has an invalid requirement.".format(item_id, target))
+
+        for key, data in item_recipe_defs.items():
+            item_a, item_b = key
+            for item_id in key:
+                if item_id not in item_defs:
+                    issues.append("Recipe '{} + {}' references missing item '{}'.".format(item_a, item_b, item_id))
+            result = data.get("result")
+            if result and result not in item_defs:
+                issues.append("Recipe '{} + {}' creates missing item '{}'.".format(item_a, item_b, result))
+            label = data.get("label")
+            if label and not renpy.has_label(label):
+                issues.append("Recipe '{} + {}' points to missing label '{}'.".format(item_a, item_b, label))
+            requirement = data.get("requires")
+            if requirement:
+                try:
+                    first_missing_requirement(requirement)
+                except Exception:
+                    issues.append("Recipe '{} + {}' has an invalid requirement.".format(item_a, item_b))
+
+        for key in item_combine_fail_defs.keys():
+            item_a, item_b = key
+            for item_id in key:
+                if item_id not in item_defs:
+                    issues.append("Combine fail '{} + {}' references missing item '{}'.".format(item_a, item_b, item_id))
+
+        return issues
+
+
+init 999 python:
+    try:
+        register_project_tac_validator(inventory_validation_issues)
+    except Exception:
+        pass

@@ -1,210 +1,207 @@
-﻿# Ren'Py Live Studio - Visual Engine v3.6.0
+# Ren'Py Live Studio 3.6.0
 
-Ren'Py Live Studio is an in-game visual authoring tool for Ren'Py. It captures the current running game, opens a modal editor over it, and lets you create inherited story frames, scene visuals, UI screens, dialogue, choices, button behavior, and flow without having to hand-write the initial Ren'Py script.
+Ren'Py Live Studio is an in-game visual authoring environment for Ren'Py 8.5.3 and newer. It captures the active game without clearing the underlying runtime, then provides an editor for scene visuals, gameplay UI, dialogue logic, frames, flow, assets, source previews, and generated code.
 
-## Start it
+The base editor remains portable. Project-specific behavior belongs in extensions. The bundled Project Tac extension is intentionally specialized for the Project Tac layout and can inspect, validate, plan, and apply changes to its known project structures.
 
-1. Replace the previous `RenPyLiveStudio` folder with this complete folder.
-2. Launch the project normally.
-3. Reach the scene you want to edit.
-4. Press **Shift+L**.
+## Installation
 
-Disable `ENABLED` in `LiveStudio_config.rpy`, or remove the folder, before shipping a public build.
+Copy the complete `RenPyLiveStudio` folder into `game/DevTools/` and launch the project normally. Open the editor with **Shift+L**.
 
-## Extension layer
+Disable `ENABLED` in `LiveStudio_config.rpy`, or remove the entire folder, before distributing a release build. The game must not depend on Live Studio for runtime behavior.
 
-Live Studio has a lightweight extension registry. The core editor stays portable for normal Ren'Py projects, while project-specific engines can add their own bottom-workspace tab, commands, validation, and generated code snippets.
-
-Extensions live under `RenPyLiveStudio/Extension/`.
-
-Extension commands can declare categories. The extension workspace shows category filters above the command list so large project integrations can stay navigable instead of becoming one long tool dump.
-
-Extension file rows can also declare a `domain`. The Project Files panel shows domain filters so large source indexes can be narrowed to Content, Data, Engine, Mechanics, Root UI, DevTools, or whatever domains another extension provides.
-
-Both extension commands and extension files support live text filtering. Command search checks command ids, titles, descriptions, and categories; file search checks file ids, labels, paths, and domains.
-
-The bundled Project Tac extension appears only when the current project exposes `project_save_id = "project_tac"`. It can refresh Project Tac registries, index Engine/Mechanics/Data/Content/UI source files, preview those files inside Studio, validate quest targets, generate `location_package`, `object_spot`, `create_quest`, dialogue, branch, inventory, gallery, minigame, image-locator, text-effect, and parallax-ready snippets, and turn the selected canvas bounds into an editable interactable starter.
-
-When generated code is applied to a selected file, the extension creates a timestamped backup under `Backup/LiveStudio` beside that source file before writing. Engine and mechanic files are indexed for reference; the default writable set is content/data/root UI files and Engine UI files.
-
-Project Tac commands with `[writes]` are typed writers. They back up the target file and place generated code into the matching project surface: quest snippets are inserted inside `Game/_Data/Quests.rpy`, item definitions inside `Game/_Data/Items.rpy`, and dialogue/branch/gallery/item-use labels into selected content files or sensible defaults. The generic **Apply to File** button still exists for deliberate scratch appends.
-
-Interactable writing is location-aware. When a selection is converted to an interactable, the extension inserts the generated `object_spot(...)` into the target location package's `objects=[...]` list, creates that list before `exits=[...]` when the room does not have one yet, and appends the inspect label as normal content script.
-
-The Project Tac tab also maps runtime `current_location` back to the content file that defines it. The mapped file is marked `[current]`, sorted to the top of the file list when known, and can be selected with **Select Current Location File**. Interactable and item-use writers prefer that current-location file when no matching content file is manually selected.
-
-Registry source maps trace author data back to source files and line numbers for areas, location definitions, characters, items, item uses, quests, gallery scenes, minigames, perks, and achievements. Use **Registry Source Report** to inspect those mappings, or the **Open ... Data** commands to jump straight to the core Project Tac data files.
-
-Content labels under `Game/Content` are also mapped by source file and content kind. **Content Label Report** shows story, dialogue, character interaction, and world interaction labels. **File Coverage Report** lists every indexed `.rpy` file and marks whether Live Studio treats it as preview-only or writable with backups.
-
-UI source maps cover root `screens.rpy`, root `gui.rpy`, and Project Tac UI/Dialogue/Image engine files. **UI Source Report** lists screens, styles, transforms, image declarations, GUI defines, and defaults with source locations. Quick open commands jump directly to root screens, GUI config, Project UI screens, HUD UI, and Locations UI.
-
-Engine and Mechanics API maps scan callable helpers, classes, screens, labels, defaults, defines, and transforms under `Engine/` and `Mechanics/`. **Engine API Report** shows those source locations, and quick open commands jump to the location engine, location package helpers, interactables, dialogue engine, image locator, quest runtime, inventory mechanic, and time/stamina mechanic.
-
-The Project Tac tab also has direct source helpers for selected, source-backed UI widgets:
-
-- **Preview Source Block** shows the source block captured for the selected widget.
-- **Preview Property Patch** turns local Live Studio property overrides into screen-language property lines.
-- **Apply Property Patch** backs up the source file and replaces the exact captured block with the patched block.
-
-This direct patch path is intentionally conservative. It only writes when a selected item has recoverable source metadata and an exact block match in the current source file.
-
-This keeps the base editor useful for almost any Ren'Py project while letting Project Tac behave more like a game-design engine layered on top of the normal Ren'Py runtime.
+When upgrading, replace the complete folder instead of mixing individual files from different versions. Existing Live Studio project data is migrated when loaded.
 
 ## Project model
 
 ```text
 Project
-â””â”€â”€ Frame
-    â”œâ”€â”€ Scenes
-    â”‚   â”œâ”€â”€ Master / Exploration
-    â”‚   â”œâ”€â”€ Dialogue
-    â”‚   â””â”€â”€ Effects / custom scene layers
-    â”œâ”€â”€ Dialogue object
-    â””â”€â”€ UI screens
+└── Frame
+    ├── Scene visuals
+    ├── Dialogue and route logic
+    └── UI screens
 ```
 
-A Frame is a story state, not an animation timestamp. The normal **Next Frame** operation inherits the current frame and stores only local differences.
+A Frame is a gameplay or story state, not an animation keyframe. Inherited frames store only their local differences.
 
-The Dialogue object belongs to a Scene. It stores ordered commands and the current interaction. Say and Choice screens are separate UI definitions that control appearance.
+Dialogue is frame logic. It does not appear as a visual Scene layer. Say and Choice screens are presentation UI and may be kept as passive preview context without being exposed as editable gameplay UI by default.
 
-## v3.3 editor layout
+Scene and UI editing are separate domains:
 
-The editor shell now follows the supplied modern dark mockup while retaining the original tool's working project and creation controls:
+- Scene mode edits images and other scene-owned visuals.
+- UI mode edits screen and widget hierarchy data.
+- Captured UI is classified as source-backed, runtime-overridable, Studio-managed, or preview-only.
+- Parent-controlled layout children, such as children of a VBox, HBox, Grid, or VPGrid, are not treated like freely positioned canvas objects.
 
-- **Top bar:** fit-aware zoom controls, workspace switcher, Save, Project, Preview, Extract Script, Settings, and Close.
-- **Left:** context-sensitive Properties above a Scene Tree that still switches between complete Scene and UI hierarchies. There is intentionally no Scene Tree search field.
-- **Center:** the live canvas, with a dedicated Frames strip directly below it.
-- **Frames strip:** Previous, source-aware Next, inherited-frame insertion, blank-frame insertion, and frame count.
-- **Right upper:** Layers, History, and Inspector. Layers keep separate Scene/UI modes, thumbnails, visibility, locking, ordering, deletion, and the Add menu.
-- **Bottom center:** a Unity-style Assets browser with only **Images** and **Audio** as top-level categories. Real project folders provide character/background/UI organization without duplicate tabs. Grid and list views are available.
-- **Bottom right:** Select, Move, Scale, Rotate, object editing, arrangement, locking, undo/redo, and a compact Add popup that preserves the original Scene/UI/dialogue/frame creation commands.
-- **Popups:** Project, Settings, Create, and Extract Script open over the editor instead of replacing the asset workspace.
+## Runtime capture rules
 
-All editor scrollbars remain narrow, and the layout scales from common 1280Ã—720 projects through 1920Ã—1080 projects.
+Live Studio captures only active rendered gameplay UI by default. It filters inactive, prediction-only, Ren'Py engine, developer, debug, focus/defocus, and Live Studio-owned screens. The filter can be changed in Settings for inspection work.
 
-## v3.3 future-frame discovery
+Captured runtime UI is frozen at the time of capture so ordinary Scene edits and interaction restarts do not re-evaluate the original screen tree. This prevents imagebuttons, dynamic text, scope-dependent values, and layout from unexpectedly changing while a scene object is moved.
 
-Live Studio now stores a JSON-safe AST node key alongside the normal source filename and line. Future-state discovery first resolves the interaction represented by the current frame, then walks from its successor. This corrects the common dialogue case where Ren'Py's runtime context already points at the next node and the old implementation accidentally skipped that first future line.
+Runtime objects use stable structural identities based on screen, source, widget ID, and hierarchy path. Transparent full-screen root wrappers may merge into their screen folder, while meaningful layout, transform, action, and clipping containers remain represented.
 
-The frame bar behaves as follows:
+Quick Menu is captured but locked by default. Dialogue presentation is kept passive unless dialogue-screen capture is explicitly enabled.
 
-- A stored project edge/frame is opened normally.
-- One statically discoverable future interaction becomes **Import Next**.
-- Multiple menu/condition branches become **Choose Future** and are listed in the right-side Inspector.
-- Branch placeholder frames include their first branch interaction instead of skipping it.
+## Editing behavior
 
-This remains a conservative static preview. Dynamic Python expressions, runtime-computed jumps, and arbitrary custom statements are not executed by the editor.
+The canvas supports selection, movement, resizing, rotation, duplication, deletion, hierarchy ordering, visibility, locking, snapping, guides, and keyboard nudging.
 
-## v3.2.2 interaction hotfix
+Coordinate intent is preserved when possible. Supported modes include automatic, pixels, relative, alignment, and mixed placement. A drag does not needlessly convert a relative or alignment-authored object into raw pixels.
 
-- Captured labels are escaped before Ren'Py interpolation, so incomplete dynamic text cannot crash the hierarchy, layers, dialogue list, assets, or generated-code preview.
-- Fixed the UI Layers button falling back to Scene mode. Scene and UI modes are synchronized across the hierarchy and Layers panel, and only the active domain can be selected or transformed on the canvas.
-- Locked objects cannot be canvas-selected.
-- Re-selecting the current item and clicking without moving no longer restart the editor or add no-op history.
-- Frame switches enter Editable Layout and refresh immediately instead of waiting for a canvas selection.
-- Selection/panel restarts keep a continuous canvas animation clock instead of replaying entrance effects.
-- Normal drag keeps the current selection when objects overlap; double-click selects the highest different object under the pointer.
-- Resize keeps the opposite edge anchored, and rotation uses the measured object center.
-- Inspector inputs keep a local typing buffer and commit on Enter, focus change, selection/frame change, save, or close.
-- **Script** is now a top-bar popup; it is no longer an Assets-area tab.
-- **Preview** is intentionally a no-op notification until full-scene preview is implemented; Exact/Editable controls remain in Debug.
+Property fields commit before save, export, frame changes, selection changes, or editor close. Continuous typing and dragging merge into meaningful undo entries instead of producing one history record per character or mouse event.
 
-## v3.2 fixes
+The editor records authored revisions separately from selection and preview-only changes. Undo, redo, delete, frame switching, and runtime recapture validate the current selection and invalidate the required derived views immediately.
 
-### Direct scene and UI manipulation
+## Project safety
 
-- **Select mode now drags objects**, matching the original editor.
-- Beginning a move/resize/rotate automatically switches the static Exact Capture to Editable Layout, so the visual objectâ€”not only its selection outlineâ€”follows the pointer.
-- The selection outline, actual scene image, and editable UI widget use the same transient drag state.
-- Corner/edge handles resize from the selected side.
-- The upper handle rotates.
-- Dragging does not rewrite or deep-resolve the project on every mouse-motion event; one change is committed on mouse-up.
-- Captured widgets with stable Ren'Py `id` values are moved through widget-property overrides, so the actual isolated screen preview moves rather than only its outline.
-- Unnamed captured widgets remain connected to their parent but require **Convert to Managed Copy** for dependable editing/export.
+Live Studio project data is separate from game source files.
 
-### Scene/UI separation
+Version 3.6 adds:
 
-- `screens`, `overlay`, `transient`, and `top` are no longer created as empty Scene containers.
-- Active screens appear only under the UI hierarchy and UI Layers.
-- Old empty `Layer: transient`, `Layer: screens`, `Layer: overlay`, and `Layer: top` records are removed during JSON loading and in-memory autoreload migration.
-- Scene Layers and UI Layers are separate views.
-- UI children remain nested beneath their real screen/container hierarchy.
-- Explicit widget IDs become readable names such as `Time Text`; anonymous text/buttons use their source expression or visible label where recoverable.
-- Anonymous runtime transforms and helper displayables are flattened instead of appearing as dozens of `Custom` entries.
+- periodic project autosave;
+- a crash-recovery journal;
+- restore, inspect, and discard recovery actions;
+- named manual Studio snapshots;
+- a command journal with project revision information;
+- export history with hashes and backup locations;
+- structured diagnostics with severity and recovery context.
 
-### Dynamic text/value compatibility
+Autosaving the Studio project does not rewrite `.rpy` source files.
 
-Captured text stores both:
+## Assets
 
-- its current preview value, and
-- the original screen-language expression where Ren'Py exposes it.
+The top-level Asset Browser intentionally contains only **Images** and **Audio**. Character, background, GUI, and other organization comes from the real project folder tree rather than duplicated category tabs.
 
-For example, a HUD statement such as:
+Live Studio builds derived asset metadata from registered images and files. The metadata cache records source paths, timestamps, inferred kinds, character expressions, time-of-day variants, and duplicate or runtime-only conditions. It is rebuilt only when the relevant source signature changes.
 
-```renpy
-text "[weekday_name()]"
-```
+## Export workflow
 
-is kept as the dynamic Ren'Py text value instead of being frozen to `Monday`. The Inspector shows **Text** versus **Value** source modes, a read-only current preview for dynamic text, and the preserved value/expression used by export.
-
-### Properties
-
-- Compact input boxes from the original interface are restored.
-- X/Y and width/height fields are paired.
-- Position, size/layout, text, appearance, and button-image groups are collapsible.
-- Inherited values show a revert button.
-- Property typing stays in a local field buffer and creates one field-level undo entry when committed, rather than rebuilding a large captured UI tree per character.
-
-### Assets
-
-- A Unity-style folder tree is built from the real source paths behind registered Ren'Py images and audio files.
-- The right side shows only the current folder or search results.
-- Images and Audio are the only top-level categories; character, background, GUI, and other organization comes from the actual source-folder tree.
-- Search is applied on Enter or the Search button, not on every keystroke.
-- Thumbnails are lazy, paged, cached, and failure-isolated.
-- Ren'Py's parameterized `text` image and other non-previewable registered images remain filtered.
-
-### Performance
-
-- Resolved inherited frames are revision-cached.
-- Inspector typing reuses the current resolved object, including frames with very large UI trees.
-- Canvas objects, bounds, widget overrides, source displayables, tree rows, asset folders, and thumbnails have separate caches.
-- Canvas selection does not recreate the canvas displayable.
-- Captured screens are rebuilt only when their own editable widget changes.
-- Thumbnail transforms are constructed once and kept out of the main `per_interact` visit tree.
-- The exact capture remains the default preview; the editable layout is built only when requested or when an object is edited.
-- Full grid and all-widget bounds remain opt-in Debug overlays.
-
-## Existing handwritten screens
-
-Existing screens are captured as runtime UI records. Live Studio shows their hierarchy and attempts to reproduce their visuals in an isolated preview.
-
-- Widgets with stable screen-language IDs can receive visual overrides.
-- Unsupported or unnamed children are limited/inspect-only.
-- **Convert to Managed Copy** creates an editor-owned hierarchy with unique IDs for full export.
-- Arbitrary Python-created displayables, loops, conditions, custom actions, and complex `use` behavior cannot always be perfectly reconstructed from the evaluated runtime tree.
-
-## Export
-
-The normal workflow remains copy-first:
-
-1. Open **Extract Script**.
-2. Review `story.rpy`, `screens.rpy`, and `live_studio_helpers.rpy` separately.
-3. Copy the section you want.
-
-Nothing is written automatically. **Export Files** explicitly writes a timestamped folder under:
+The normal workflow is:
 
 ```text
-game/live_studio_exports/
+Generate preview
+→ inspect validation and changed files
+→ select an export action
+→ apply atomically
 ```
 
-Editor-owned block replacement and handwritten-source patching remain experimental and disabled by default.
+The export planner calculates final text and hashes before writing. Unchanged files are skipped and do not receive unnecessary backups. Real changes are written through temporary files and atomic replacement. Export history records the project revision, modified files, old and new hashes, backups, and validation results.
 
-## Animation
+Captured scene images emit only explicitly changed transform properties. An untouched object does not receive unnecessary output such as `rotate 0`, `alpha 1`, default zoom, or observed runtime placement.
 
-Animation is intentionally excluded from the main build. The disabled integration boundary remains under `optional/animation/`.
+Generic handwritten-source replacement remains experimental and disabled by default. Generated files and editor-owned regions remain the safest portable path.
 
-## Required real-project check
+## Extension system
 
-This build was Python-compiled, source-flow mock-tested, screen-expression checked, and compatibility-audited, but your project must still be tested in the real Ren'Py 8.5.3 nightly runtime. Run Launcher **Lint**, then test Live Studio during exploration, dialogue, and a choice menu.
+Extensions register through `Extension/LiveStudio_extensions.rpy`. An extension may provide:
+
+- an availability check;
+- capability requirements;
+- commands and command categories;
+- project-file indexing and previews;
+- summary information;
+- generated previews;
+- controlled apply behavior.
+
+Unsupported commands remain visible when useful but are disabled with a readable capability reason. Extension failures are routed into structured Live Studio diagnostics.
+
+## Project Tac extension
+
+`Extension/LiveStudio_ProjectTac_Extension.rpy` contains the original Project Tac integration. `Extension/LiveStudio_ProjectTac_v36.rpy` augments it with the safer 3.6 authoring model.
+
+The extension activates only when the running project identifies itself as Project Tac. It understands the expected `Engine`, `Mechanics`, `Game/_Data`, `Game/Content`, root UI, and DevTools layout. This specialization is deliberate; the same source-writing assumptions are not applied to arbitrary Ren'Py projects.
+
+### Capabilities
+
+The extension reads `PROJECT_TAC_ENGINE` when available. Otherwise it derives a conservative capability descriptor from known Project Tac symbols. Commands declare minimum capability levels and are disabled when the engine does not meet them.
+
+### Source index
+
+The Project Tac source index records:
+
+- files and domains;
+- labels, screens, styles, transforms, images, defaults, and defines;
+- functions and classes;
+- known Project Tac definitions and generated regions;
+- Studio object IDs and source ranges;
+- source signatures and indexing errors.
+
+The index is cached and refreshed when relevant files change.
+
+### Validation
+
+Project-specific validation reports structured findings for capability mismatches, duplicate source objects, missing labels, invalid quest references, location exits and items, interactable definitions, and source-index failures. Errors can block an affected source plan without preventing unrelated valid work.
+
+### Two-stage source changes
+
+Project Tac writer commands create a pending source plan first. The plan contains the target files, exact resulting text, hashes, unified diffs, validation findings, and dependency group. Nothing is written during planning.
+
+After review, **Apply Planned Changes** performs a rollback-capable transaction:
+
+1. Verify that source hashes still match the planned versions.
+2. Re-run structural validation.
+3. Skip unchanged files.
+4. Create uniquely timestamped backups only for real changes.
+5. Write and flush temporary files.
+6. Atomically replace all files in the dependency group.
+7. Roll back already-replaced files if any later replacement fails.
+8. Verify post-write hashes and record the result.
+
+Raw Apply-to-File is available only for previews explicitly marked safe for that operation. Reports and structured writer plans cannot be blindly appended.
+
+### Direct property patching
+
+Direct source patching is limited to selected source-backed UI widgets with recoverable source metadata. It targets the exact screen-language statement rather than nearby context lines, verifies the expected original hash, and refuses ambiguous or unsafe inline-property changes.
+
+## Debugger
+
+The Debugger tab provides a copyable report intended for bug reports. It includes:
+
+- Live Studio and project model versions;
+- current project, frame, revision, and editing session;
+- selection identity, parent chain, category, editability, coordinate modes, and bounds;
+- active and filtered runtime screens;
+- capture and cache revisions;
+- frame-local changes and source-flow information;
+- asset metadata and issues;
+- export plans and recent export records;
+- extension capabilities;
+- Project Tac source-index, validation, and pending-plan information;
+- recent structured diagnostics and command-journal entries.
+
+Use **Copy Full Report** when reporting a problem. The visible preview may be truncated, but the copied report contains the full payload.
+
+## File layout
+
+```text
+LiveStudio_config.rpy          Version, settings, property definitions
+LiveStudio_models.rpy          JSON-safe project model and migration defaults
+LiveStudio_project.rpy         Frame resolution, selection, history, core commands
+LiveStudio_project_io.rpy      Save, load, autosave, recovery, snapshots, export history
+LiveStudio_commands.rpy        Revision and command-journal integration
+LiveStudio_diagnostics.rpy     Structured diagnostics
+LiveStudio_scene.rpy           Runtime scene capture and scene editing
+LiveStudio_ui.rpy              Runtime UI capture, hierarchy, overrides, managed UI
+LiveStudio_runtime_rules.rpy   Object categories and coordinate/layout rules
+LiveStudio_dialogue.rpy        Dialogue and route logic
+LiveStudio_capture.rpy         Non-destructive runtime capture
+LiveStudio_flow.rpy            Frame graph and conservative source-flow discovery
+LiveStudio_assets.rpy          Asset browser
+LiveStudio_asset_metadata.rpy  Derived asset metadata cache
+LiveStudio_canvas.rpy          Rendering, hit testing, and direct manipulation
+LiveStudio_export.rpy          Ren'Py code generation
+LiveStudio_export_plan.rpy     Export planning, hashing, atomic writes, history
+LiveStudio_debug_report_v36.rpy Extended copyable debugger report
+LiveStudio_screens.rpy         Editor screens and styles
+LiveStudio_bootstrap.rpy       Shortcut and context-safe startup
+Extension/                     Generic and Project Tac-specific integrations
+```
+
+## Important limitations
+
+Ren'Py runtime displayable trees are not guaranteed to map one-to-one to handwritten screen language. Custom displayables, dynamically generated widgets, loops, transclusion, Python closures, ATL, and repeated screen instances may only be inspectable or runtime-overridable.
+
+Future-frame discovery is conservative. Dynamic Python conditions, computed jumps, custom statements, rollback behavior, and context changes may not have a single statically knowable next frame.
+
+The included validation is source-level and mocked-logic validation. A complete rendered test must still be performed inside the target Ren'Py project before relying on source-writing or complex UI-editing behavior.

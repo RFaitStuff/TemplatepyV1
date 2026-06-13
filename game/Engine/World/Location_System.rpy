@@ -312,3 +312,126 @@ init python:
         if ctx.get("location") == loc_id:
             return bool(ctx.get("first_visit_today"))
         return location_visit_days.get(loc_id) != globals().get("day", 0)
+
+    def world_validation_issues():
+        issues = []
+
+        for area_id, data in areas.items():
+            if not data.get("name"):
+                issues.append("Area '{}' has no display name.".format(area_id))
+
+        seen_order = set()
+        for loc_id in location_order:
+            if loc_id in seen_order:
+                issues.append("location_order contains duplicate location '{}'.".format(loc_id))
+            seen_order.add(loc_id)
+            if loc_id not in locations:
+                issues.append("location_order references missing location '{}'.".format(loc_id))
+
+        for loc_id, loc in locations.items():
+            if loc_id not in location_order:
+                issues.append("Location '{}' is registered but missing from location_order.".format(loc_id))
+            if loc.get("area") and loc.get("area") not in areas:
+                issues.append("Location '{}' references missing area '{}'.".format(loc_id, loc.get("area")))
+            if not loc.get("bg"):
+                issues.append("Location '{}' has no background id.".format(loc_id))
+
+            for label_key in ("on_enter", "first_visit", "first_visit_today", "main_loop"):
+                label = loc.get(label_key)
+                if label and not renpy.has_label(label):
+                    issues.append("Location '{}' {} points to missing label '{}'.".format(loc_id, label_key, label))
+
+            for cid, spots in (loc.get("positions", {}) or {}).items():
+                if cid not in (globals().get("character_stats", {}) or {}):
+                    issues.append("Location '{}' has positions for missing character '{}'.".format(loc_id, cid))
+                for spot in spots or []:
+                    if not _world_valid_pair(spot):
+                        issues.append("Location '{}' position for '{}' is not an (x, y) pair: {!r}".format(loc_id, cid, spot))
+
+            for cid in (loc.get("variants", {}) or {}).keys():
+                if cid not in (globals().get("character_stats", {}) or {}):
+                    issues.append("Location '{}' has image variants for missing character '{}'.".format(loc_id, cid))
+
+            for cid, label in (loc.get("talk", {}) or {}).items():
+                if cid not in (globals().get("character_stats", {}) or {}):
+                    issues.append("Location '{}' talk override references missing character '{}'.".format(loc_id, cid))
+                if label and not renpy.has_label(label):
+                    issues.append("Location '{}' talk override for '{}' points to missing label '{}'.".format(loc_id, cid, label))
+
+            seen_objects = set()
+            for obj in loc.get("objects", []) or []:
+                oid = obj.get("id")
+                if not oid:
+                    issues.append("Location '{}' has object spot with no id.".format(loc_id))
+                    continue
+                if oid in seen_objects:
+                    issues.append("Location '{}' has duplicate object spot '{}'.".format(loc_id, oid))
+                seen_objects.add(oid)
+                if oid not in (globals().get("interactable_defs", {}) or {}):
+                    issues.append("Location '{}' object '{}' has no interactable definition.".format(loc_id, oid))
+                _world_validate_requirement("Location '{}' object '{}'".format(loc_id, oid), obj.get("requires") or obj.get("show_when") or obj.get("unlock_when"), issues)
+                if obj.get("pos") and not _world_valid_pair(obj.get("pos")):
+                    issues.append("Location '{}' object '{}' has invalid pos {!r}.".format(loc_id, oid, obj.get("pos")))
+                if obj.get("size") and not _world_valid_pair(obj.get("size")):
+                    issues.append("Location '{}' object '{}' has invalid size {!r}.".format(loc_id, oid, obj.get("size")))
+
+            for item in loc.get("items", []) or []:
+                item_id = item.get("item")
+                if not item_id:
+                    issues.append("Location '{}' has item spot with no item id.".format(loc_id))
+                    continue
+                if item_id not in (globals().get("item_defs", {}) or {}):
+                    issues.append("Location '{}' item spot references missing item '{}'.".format(loc_id, item_id))
+                label = item.get("label")
+                if label and not renpy.has_label(label):
+                    issues.append("Location '{}' item '{}' points to missing label '{}'.".format(loc_id, item_id, label))
+                _world_validate_requirement("Location '{}' item '{}'".format(loc_id, item_id), item.get("requires") or item.get("show_when") or item.get("unlock_when"), issues)
+                if item.get("pos") and not _world_valid_pair(item.get("pos")):
+                    issues.append("Location '{}' item '{}' has invalid pos {!r}.".format(loc_id, item_id, item.get("pos")))
+
+            for ex in loc.get("exits", []) or []:
+                target = ex.get("to")
+                if not target:
+                    issues.append("Location '{}' has exit with no target.".format(loc_id))
+                    continue
+                if target not in locations:
+                    issues.append("Location '{}' exit points to missing location '{}'.".format(loc_id, target))
+                _world_validate_requirement("Location '{}' exit '{}'".format(loc_id, target), ex.get("requires") or ex.get("show_when") or ex.get("unlock_when"), issues)
+                if ex.get("pos") and not _world_valid_pair(ex.get("pos")):
+                    issues.append("Location '{}' exit '{}' has invalid pos {!r}.".format(loc_id, target, ex.get("pos")))
+                if ex.get("size") and not _world_valid_pair(ex.get("size")):
+                    issues.append("Location '{}' exit '{}' has invalid size {!r}.".format(loc_id, target, ex.get("size")))
+
+            for index, layer in enumerate(loc.get("layers", []) or []):
+                if not layer.get("image"):
+                    issues.append("Location '{}' layer #{} has no image.".format(loc_id, index + 1))
+                if layer.get("slot", "overlay") not in ("back", "overlay", "front"):
+                    issues.append("Location '{}' layer #{} has unknown slot '{}'.".format(loc_id, index + 1, layer.get("slot")))
+                _world_validate_requirement("Location '{}' layer #{}".format(loc_id, index + 1), layer.get("requires") or layer.get("show_when"), issues)
+
+        return issues
+
+    def _world_valid_pair(value):
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            return False
+        try:
+            float(value[0])
+            float(value[1])
+            return True
+        except Exception:
+            return False
+
+    def _world_validate_requirement(context, requirement, issues):
+        if not requirement:
+            return
+        try:
+            first_missing_requirement(requirement)
+        except Exception:
+            issues.append("{} has an invalid requirement.".format(context))
+
+
+init 999 python:
+    try:
+        register_project_tac_validator(world_validation_issues)
+    except Exception:
+        pass

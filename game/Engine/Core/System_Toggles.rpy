@@ -68,18 +68,22 @@ init -95 python:
         if quest is None:
             return True
         target = getattr(quest, "target", None) or {}
-        if action_type == "time" and target.get("allow_time_skip"):
+        active_targets = [target]
+        try:
+            for objective in getattr(quest, "objectives", []):
+                if not getattr(objective, "done", False):
+                    active_targets.append(getattr(objective, "target", None) or {})
+        except Exception:
+            pass
+        if action_type == "time" and any(t.get("allow_time_skip") for t in active_targets):
             return True
-        if action_type == "stamina" and target.get("allow_stamina"):
+        if action_type == "stamina" and any(t.get("allow_stamina") for t in active_targets):
             return True
         if iid:
-            allowed = target.get("allowed_interactables") or target.get("allowed_targets")
-            if allowed and iid in allowed:
-                return True
-            for objective in getattr(quest, "objectives", []):
-                if getattr(objective, "done", False):
-                    continue
-                obj_target = getattr(objective, "target", None) or {}
-                if iid in (obj_target.get("npc"), obj_target.get("item"), obj_target.get("object")):
+            for active_target in active_targets:
+                allowed = active_target.get("allowed_interactables") or active_target.get("allowed_targets")
+                if allowed and iid in allowed:
+                    return True
+                if iid in (active_target.get("npc"), active_target.get("item"), active_target.get("object")):
                     return True
         return False

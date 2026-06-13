@@ -623,3 +623,85 @@ init python:
 
             if q.complete_flag == flag:
                 q.complete()
+
+    def quest_validation_issues():
+        issues = []
+        valid_precision = set(("exact", "location", "loc", "area", "region", "characters", "none", "off", "hidden"))
+
+        for qid, qdef in quest_defs.items():
+            if not qdef.get("title"):
+                issues.append("Quest '{}' has no title.".format(qid))
+            if qdef.get("character") and qdef.get("character") not in (globals().get("character_stats", {}) or {}):
+                issues.append("Quest '{}' references missing character '{}'.".format(qid, qdef.get("character")))
+            if qdef.get("track_next") and qdef.get("track_next") not in quest_defs:
+                issues.append("Quest '{}' track_next points to missing quest '{}'.".format(qid, qdef.get("track_next")))
+            precision = str(qdef.get("guide_precision", "exact")).lower()
+            if precision not in valid_precision:
+                issues.append("Quest '{}' has unknown guide_precision '{}'.".format(qid, precision))
+            for key in ("unlock_when", "start_when"):
+                requirement = qdef.get(key)
+                if requirement:
+                    try:
+                        first_missing_requirement(requirement)
+                    except Exception:
+                        issues.append("Quest '{}' has invalid requirement '{}'.".format(qid, key))
+            _quest_validate_target(qid, "target", qdef.get("target"), issues)
+
+            objective_ids = set()
+            for objective in qdef.get("objectives", []) or []:
+                if not isinstance(objective, dict):
+                    continue
+                oid = objective.get("oid") or objective.get("id")
+                if not oid:
+                    issues.append("Quest '{}' has an objective with no id.".format(qid))
+                    continue
+                if oid in objective_ids:
+                    issues.append("Quest '{}' has duplicate objective id '{}'.".format(qid, oid))
+                objective_ids.add(oid)
+                if not objective.get("text"):
+                    issues.append("Quest '{}.{}' has no objective text.".format(qid, oid))
+                for key in ("requires", "unlock_when"):
+                    requirement = objective.get(key)
+                    if requirement:
+                        try:
+                            first_missing_requirement(requirement)
+                        except Exception:
+                            issues.append("Quest '{}.{}' has invalid requirement '{}'.".format(qid, oid, key))
+                _quest_validate_target(qid, "objective '{}'".format(oid), objective.get("target"), issues)
+        return issues
+
+    def _quest_validate_target(qid, context, target, issues):
+        if not target:
+            return
+        if not isinstance(target, dict):
+            issues.append("Quest '{}' {} target should be a dict.".format(qid, context))
+            return
+        if target.get("targets"):
+            for entry in target.get("targets") or []:
+                merged = dict(target)
+                merged.pop("targets", None)
+                if isinstance(entry, dict):
+                    merged.update(entry)
+                _quest_validate_target(qid, context, merged, issues)
+            return
+        if target.get("location") and target.get("location") not in (globals().get("locations", {}) or {}):
+            issues.append("Quest '{}' {} references missing location '{}'.".format(qid, context, target.get("location")))
+        if target.get("area") and target.get("area") not in (globals().get("areas", {}) or {}):
+            issues.append("Quest '{}' {} references missing area '{}'.".format(qid, context, target.get("area")))
+        for cid in [target.get("npc")] + list(target.get("characters") or []):
+            if cid and cid not in (globals().get("character_stats", {}) or {}):
+                issues.append("Quest '{}' {} references missing character '{}'.".format(qid, context, cid))
+        if target.get("item") and target.get("item") not in (globals().get("item_defs", {}) or {}):
+            issues.append("Quest '{}' {} references missing item '{}'.".format(qid, context, target.get("item")))
+        if target.get("object") and target.get("object") not in (globals().get("interactable_defs", {}) or {}):
+            issues.append("Quest '{}' {} references missing object '{}'.".format(qid, context, target.get("object")))
+        label = target.get("label")
+        if label and not renpy.has_label(label):
+            issues.append("Quest '{}' {} points to missing label '{}'.".format(qid, context, label))
+
+
+init 999 python:
+    try:
+        register_project_tac_validator(quest_validation_issues)
+    except Exception:
+        pass

@@ -75,6 +75,32 @@ init python:
             return complete_minigame(game_id, data.get("skip_result", "skipped"))
         return complete_minigame(game_id, "missing")
 
+    def minigame_validation_issues():
+        issues = []
+        for game_id, data in (globals().get("minigame_defs", {}) or {}).items():
+            if not isinstance(data, dict):
+                issues.append("Minigame '{}' should be a dictionary definition.".format(game_id))
+                continue
+            if data.get("id") and data.get("id") != game_id:
+                issues.append("Minigame '{}' has mismatched id '{}'.".format(game_id, data.get("id")))
+            for label_key in ("label", "skip_label"):
+                label = data.get(label_key)
+                if label:
+                    try:
+                        if not renpy.has_label(label):
+                            issues.append("Minigame '{}' {} points to missing label '{}'.".format(game_id, label_key, label))
+                    except Exception:
+                        pass
+            reqs = data.get("requires")
+            if reqs:
+                try:
+                    first_missing_requirement(reqs)
+                except Exception:
+                    issues.append("Minigame '{}' has invalid requirements '{}'.".format(game_id, reqs))
+            if "fail_forward" in data and not isinstance(data.get("fail_forward"), bool):
+                issues.append("Minigame '{}' fail_forward should be true/false.".format(game_id))
+        return issues
+
 
 init 5 python:
     minigame(
@@ -82,3 +108,10 @@ init 5 python:
         skip_result="win",
         fail_forward=True,
     )
+
+
+init 999 python:
+    try:
+        register_project_tac_validator(minigame_validation_issues)
+    except Exception:
+        pass

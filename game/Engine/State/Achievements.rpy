@@ -114,6 +114,40 @@ init python:
     def has_milestone(milestone_id):
         return milestone_id in persistent.milestones
 
+    def achievements_validation_issues():
+        issues = []
+        for achievement_id, data in achievement_defs.items():
+            if not data.get("title"):
+                issues.append("Achievement '{}' has no title.".format(achievement_id))
+            if data.get("requires"):
+                try:
+                    first_missing_requirement(data.get("requires"))
+                except Exception:
+                    issues.append("Achievement '{}' has an invalid requirement.".format(achievement_id))
+            if data.get("target") is not None:
+                try:
+                    int(data.get("target"))
+                except Exception:
+                    issues.append("Achievement '{}' target is not a number.".format(achievement_id))
+
+        for milestone_id, data in milestone_defs.items():
+            achievement_id = data.get("achievement")
+            if achievement_id and achievement_id not in achievement_defs:
+                issues.append("Milestone '{}' references missing achievement '{}'.".format(milestone_id, achievement_id))
+            gallery_id = data.get("gallery")
+            if gallery_id:
+                try:
+                    if not gallery_scene(gallery_id):
+                        issues.append("Milestone '{}' references missing gallery scene '{}'.".format(milestone_id, gallery_id))
+                except Exception:
+                    issues.append("Milestone '{}' could not validate gallery '{}'.".format(milestone_id, gallery_id))
+            if data.get("requires"):
+                try:
+                    first_missing_requirement(data.get("requires"))
+                except Exception:
+                    issues.append("Milestone '{}' has an invalid requirement.".format(milestone_id))
+        return issues
+
 
 init 1 python:
     achievement("first_steps", "First Steps", "Started a new story.", category="story", points=5)
@@ -121,3 +155,10 @@ init 1 python:
     milestone("started_story", achievement="first_steps")
     milestone("archive_witness_bree", achievement="archive_witness")
     milestone("archive_witness_cora", achievement="archive_witness")
+
+
+init 999 python:
+    try:
+        register_project_tac_validator(achievements_validation_issues)
+    except Exception:
+        pass

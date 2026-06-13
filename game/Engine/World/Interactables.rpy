@@ -499,9 +499,55 @@ init python:
         for cid in cids:
             register_interactable(cid, kind="character", title=character_display_name(cid))
 
+    def interactable_validation_issues():
+        issues = []
+        for iid, data in interactable_defs.items():
+            if not data.get("title"):
+                issues.append("Interactable '{}' has no title.".format(iid))
+            kind = data.get("kind", "object")
+            if kind == "character" and iid not in (globals().get("character_stats", {}) or {}):
+                issues.append("Character interactable '{}' has no character state.".format(iid))
+            actions = data.get("actions", []) or []
+            if not actions:
+                issues.append("Interactable '{}' has no actions.".format(iid))
+            seen = set()
+            for action in actions:
+                action_id = action.get("id")
+                if not action_id:
+                    issues.append("Interactable '{}' has an action with no id.".format(iid))
+                    continue
+                if action_id in seen:
+                    issues.append("Interactable '{}' has duplicate action id '{}'.".format(iid, action_id))
+                seen.add(action_id)
+                if not action.get("title"):
+                    issues.append("Interactable '{}.{}' has no title.".format(iid, action_id))
+                label = action.get("label")
+                if label and not renpy.has_label(label):
+                    issues.append("Interactable '{}.{}' points to missing label '{}'.".format(iid, action_id, label))
+                requirement = action.get("requires")
+                if requirement:
+                    try:
+                        first_missing_requirement(requirement)
+                    except Exception:
+                        issues.append("Interactable '{}.{}' has an invalid requirement.".format(iid, action_id))
+                stamina = action.get("stamina")
+                if stamina is not None:
+                    try:
+                        int(stamina)
+                    except Exception:
+                        issues.append("Interactable '{}.{}' has non-numeric stamina '{}'.".format(iid, action_id, stamina))
+        return issues
+
 
 init 50 python:
     auto_register_character_interactables()
+
+
+init 999 python:
+    try:
+        register_project_tac_validator(interactable_validation_issues)
+    except Exception:
+        pass
 
 
 label _character_talk_dispatch:

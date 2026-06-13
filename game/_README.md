@@ -2,6 +2,10 @@
 
 Use this when writing content. Sections are ordered by the things you touch most often.
 
+For the full gameplay authoring reference, including locations, quests, items,
+interactables, branches, requirements, gallery, minigames, and LiveStudio flow,
+see `GAMEPLAY_AUTHORING_TUTORIAL.md`.
+
 ---
 
 ## 1. Dialogue & Scene Quickstart
@@ -34,6 +38,7 @@ label alice_chat:
 - Shorthand (no cooldowns):
   ```renpy
   stat alice love +1
+  stat Alice, Love +1
   stat alex trust -1
   ```
 - Mood axes (0â€“15): `happy`, `sad`, `angry`, `nervous`.
@@ -42,6 +47,9 @@ label alice_chat:
   $ set_mood("alice", "sad", 8)
   $ add_mood("alice", "angry", -2)
   $ mood("alice", "neutral")         # clear all
+  mood Alice happy +3 duration=2
+  react Alice embarrassed
+  react Alice
   ```
 - Statuses (`tired`, `sick`, `hurt`) + reactions (`embarrassed`, `jealous`, `shy`, `confused`, `confident`):
   ```renpy
@@ -67,9 +75,27 @@ $ set_status("alice", "tired", False)  # reward cleanup
 $ add_item("lunch_bento")               # Inventory helper
 ```
 - Common helpers: `set_flag`, `clear_flag`, `has_flag`, `set_tracked_quest`, `toggle_tracked_character`.
+- Writer shorthand:
+  ```renpy
+  flag alice_picnic_offered
+  unflag temporary_hint_seen
+  item lunch_bento +1
+  quest start alice_picnic
+  quest progress alice_picnic meet
+  quest clear_track
+  gallery_unlock alice_first_meet
+  milestone started_story
+  ```
 - Use facts to populate the Characters screen; locked entries auto render as `???`.
 
 ### 1.4 Menus, placement, and polish
+- Engine-aware character placement:
+  ```renpy
+  Show Alice
+  Show Alice(side=Left)
+  Show Alice(side=Right, emotion=happy)
+  Hide Alice
+  ```
 - `menu_side("left" | "right" | "middle")` slides the dialogue cast smoothly via `_xalign_anim`.
 - `menu("middle"):` syntax works as shorthand on supported Ren'Py versions.
 - Dialogue defocus overlay keeps the room visible but softened. Toggle via:
@@ -87,7 +113,7 @@ else:
     return
 ```
 - Global vars: `time` (0â€“23), `day` (starting at 1 = Monday).
-- Helpers from `Mechanics/Time_System.rpy`:
+- Helpers from `Mechanics/Time_Stamina.rpy`:
   - `advance_hour(hours)` (also triggers mood decay, NPC schedules).
   - `on_hour_advance(fn)` for background systems.
   - `convert_to_12hr_format(time)`, `weekday_name(day=None)`.
@@ -159,7 +185,7 @@ init python:
 ---
 
 ## 4. Characters
-- Every character entry lives in `Game/Characters/Characters.rpy`. `ensure_character_state(char)` fills in:
+- Every character entry lives in `Game/_Data/Characters.rpy`. `ensure_character_state(char)` fills in:
   - Relationship stats (`love`, `lust`, `trust`, `respect`).
   - Mood dict with the four axes (0-15).
   - Reaction tags + status tags (default False/0).
@@ -203,18 +229,19 @@ Use these files when you need to push beyond author scripting.
 
 | Area | File(s) | Notes |
 | ---- | ------- | ----- |
-| User-authored characters | `Game/Characters/Characters.rpy`, `Game/Characters/Dialogue/*_Talk.rpy`, `Game/Characters/Dialogue/*.rpy` | Character data, talk registration, and dialogue labels are split so new content is easy to add. |
-| Character engine | `Engine/Character_System.rpy`, `Engine/Dialogue/Dialogue_Registry.rpy` | Reusable character state helpers, stat rewards, facts, dialogue selection, and interaction routing. |
-| User-authored world | `Game/World/Locations.rpy`, `Game/World/Locations/<Area>/*.rpy` | Location registration stays separate from per-location items, NPC positions, exits, and hooks. |
-| Location engine | `Engine/Location_System.rpy`, `Engine/UI/Locations.rpy` | Registry helpers, navigation state, background lookup, and exploration screen UI. |
+| User-authored characters | `Game/_Data/Characters.rpy`, `Game/_Data/Character_Schedules.rpy`, `Game/Content/Dialogue/Talk/*.rpy`, `Game/Content/Dialogue/Interact/*.rpy` | Character data, schedules, talk labels, and meaningful interaction labels are split so new content is easy to add. |
+| Character engine | `Engine/Characters/Character_System.rpy`, `Engine/Dialogue/Dialogue_Registry.rpy` | Reusable character state helpers, stat rewards, facts, dialogue selection, and interaction routing. |
+| User-authored world | `Game/_Data/Areas_Locations.rpy`, `Game/Content/Interactions/<Area>/*.rpy` | Location registration stays separate from per-location items, NPC positions, exits, and hooks. |
+| Location engine | `Engine/World/Location_System.rpy`, `Engine/World/Location_Package.rpy`, `Engine/UI/Locations.rpy` | Registry helpers, room packages, navigation state, background lookup, and exploration screen UI. |
 | Dialogue layer & blur | `Engine/Dialogue/Dialogue_Handler.rpy`, `Engine/UI/Choice.rpy`, `Engine/UI/Say.rpy` | Dialogue-only sprite layer, menu displacement animation, dialogue box styling. |
 | Mood engine & reacts | `Mechanics/Mood.rpy` | Four-axis model, incompatibility matrix, auto decay, `react()` overrides. |
-| HUD & overlays | `Engine/UI/HUD.rpy`, `Engine/Common/Screens.rpy` | HUD icons, objective pin toggle, fullscreen Characters UI, quest log. |
-| Exploration UI | `Engine/UI/Locations.rpy`, `Engine/Show_NPC.rpy` | Hotspots, reveal mode, NPC highlight syncing. |
-| Time & stamina | `Mechanics/Time_System.rpy` | Hour advance, stamina drain, skip-hour button, forced sleep from 2 AM until morning. |
-| System gates | `Engine/System_Toggles.rpy` | Toggle systems on/off and define time-sensitive quest locks that block time skip, stamina, and unrelated interactions. |
-| Quests | `Mechanics/Quest/Quests.rpy`, `Game/Quests.rpy` | Quest engine is separate from quest definitions. Quest targets can use `time_sensitive`, `locks_time`, `allowed_interactables`, and `lock_message`. |
-| Inventory & items | `Engine/State/Inventory.rpy` | Item registry, add/remove hooks, quest tagging. |
+| HUD & overlays | `Engine/UI/HUD.rpy`, `Engine/UI/Screens.rpy` | HUD icons, objective pin toggle, fullscreen Characters UI, quest log. |
+| Exploration UI | `Engine/UI/Locations.rpy`, `Engine/Images/Show_NPC.rpy` | Hotspots, reveal mode, NPC highlight syncing. |
+| Time & stamina | `Mechanics/Time_Stamina.rpy` | Hour advance, stamina drain, skip-hour button, forced sleep from 2 AM until morning. |
+| System gates | `Engine/Core/System_Toggles.rpy` | Toggle systems on/off and define time-sensitive quest locks that block time skip, stamina, and unrelated interactions. |
+| Validation & migrations | `Engine/Core/Validation.rpy`, `Engine/State/Migrations.rpy` | Runtime-safe validation facade plus save-compatible renames for flags, items, quests, objectives, and stats. |
+| Quests | `Mechanics/Quest/Quest_Runtime.rpy`, `Mechanics/Quest/Quest_Guide.rpy`, `Game/_Data/Quests.rpy` | Quest engine is separate from quest definitions. Quest targets can use `time_sensitive`, `locks_time`, `allowed_interactables`, and `lock_message`. |
+| Inventory & items | `Mechanics/Inventory/Inventory.rpy`, `Game/_Data/Items.rpy` | Item registry, add/remove hooks, use-on-target rules, crafting, and quest tagging. |
 | Flags & story state | `Engine/State/Story_Flags.rpy` | `set_flag`, `clear_flag`, `has_flag`, story routing helpers. |
 | Folder map | `Engine/`, `Mechanics/`, `Game/`, `assets/` | Keep feature code near its domain. |
 

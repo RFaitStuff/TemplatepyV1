@@ -885,6 +885,13 @@ init -850 python in live_studio:
     def _begin_canvas_drag(item, kind, mode, stage_x, stage_y, bounds, resize_handle=None):
         if item is None or canvas_item_locked(item, kind) or not canvas_kind_editable(kind):
             return False
+        if kind == "ui_node" and mode in ("move", "resize") and "parent_layout_controls_position" in globals() and parent_layout_controls_position(item.get("id")):
+            log_diagnostic("info", "UI transform blocked by parent layout", {"item": item.get("name"), "type": item.get("type"), "mode": mode}, system="canvas", operation="begin_drag", category="user_content", recovery="Edit parent spacing/order/size rules, or place the widget under a Fixed container for free transforms.")
+            try:
+                renpy.notify("Parent layout controls this widget's position")
+            except Exception:
+                pass
+            return False
         selected_screen = screen_for_node(resolve_frame(), item.get("id")) if kind == "ui_node" else None
         if kind == "ui_node" and selected_screen and not selected_screen.get("managed") and not item.get("widget_id"):
             log_diagnostic("warning", "Blocked direct edit of runtime UI without widget id", {"screen": selected_screen.get("name"), "item": item.get("name"), "mode": mode})
@@ -903,6 +910,8 @@ init -850 python in live_studio:
             "stage_x": stage_x, "stage_y": stage_y,
             "xpos": props.get("xpos"), "ypos": props.get("ypos"),
             "xoffset": props.get("xoffset", 0), "yoffset": props.get("yoffset", 0),
+            "xmode": coordinate_mode(item, "x") if "coordinate_mode" in globals() else "auto",
+            "ymode": coordinate_mode(item, "y") if "coordinate_mode" in globals() else "auto",
             "xanchor": props.get("xanchor", props.get("xalign", 0) if props.get("xalign") is not None else 0),
             "yanchor": props.get("yanchor", props.get("yalign", 0) if props.get("yalign") is not None else 0),
             "anchor_affects_bounds": kind == "scene_node" or managed_screen,
@@ -920,13 +929,15 @@ init -850 python in live_studio:
         xpos = drag.get("xpos")
         ypos = drag.get("ypos")
         if dx is not None:
-            if drag.get("ui_node") or (isinstance(xpos, float) and -2.0 <= xpos <= 2.0):
+            preserve_x = drag.get("xmode") in ("relative", "alignment", "mixed")
+            if drag.get("ui_node") or preserve_x or (isinstance(xpos, float) and -2.0 <= xpos <= 2.0):
                 _set_drag_preview("properties.xoffset", _snap_value(float(drag.get("xoffset", 0) or 0) + dx))
             else:
                 base_x = xpos if isinstance(xpos, (int, float)) else drag.get("bounds_x", 0)
                 _set_drag_preview("properties.xpos", _snap_value(float(base_x) + dx))
         if dy is not None:
-            if drag.get("ui_node") or (isinstance(ypos, float) and -2.0 <= ypos <= 2.0):
+            preserve_y = drag.get("ymode") in ("relative", "alignment", "mixed")
+            if drag.get("ui_node") or preserve_y or (isinstance(ypos, float) and -2.0 <= ypos <= 2.0):
                 _set_drag_preview("properties.yoffset", _snap_value(float(drag.get("yoffset", 0) or 0) + dy))
             else:
                 base_y = ypos if isinstance(ypos, (int, float)) else drag.get("bounds_y", 0)

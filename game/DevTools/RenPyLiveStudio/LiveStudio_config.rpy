@@ -5,8 +5,9 @@ init -1000 python in live_studio:
     from collections import OrderedDict
     from renpy.store import config
 
-    VERSION = 11
-    RELEASE_VERSION = "3.5.0"
+    VERSION = 12
+    RELEASE_VERSION = "3.6.0"
+    EXTENSION_API_VERSION = 2
     TOOL_NAME = "Ren'Py Live Studio"
     MIN_RENPY_VERSION = (8, 5, 3)
 
@@ -19,12 +20,27 @@ init -1000 python in live_studio:
 
     PROJECT_DIRECTORY = "live_studio_projects"
     EXPORT_DIRECTORY = "live_studio_exports"
+    AUTOSAVE_DIRECTORY = "autosave"
+    RECOVERY_DIRECTORY = "recovery"
+    SNAPSHOT_DIRECTORY = "snapshots"
+    EXPORT_HISTORY_LIMIT = 80
+    COMMAND_JOURNAL_LIMIT = 500
+    DIAGNOSTIC_LIMIT = 500
+    AUTOSAVE_INTERVAL = 4.0
 
     EXPERIMENTAL_REPLACE_BLOCKS = False
     EXPERIMENTAL_PATCH_FILES = False
 
     DEFAULT_PREVIEW_MODE = "capture"
     DEFAULT_NEW_FRAME_MODE = "inherit"
+
+    OBJECT_CATEGORIES = (
+        "studio_managed",
+        "source_backed",
+        "runtime_override",
+        "preview_only",
+    )
+    COORDINATE_MODES = ("auto", "pixels", "relative", "alignment", "mixed")
 
     # A project may override this mapping from a later init block. Each entry
     # becomes one logical Scene in the frame hierarchy.

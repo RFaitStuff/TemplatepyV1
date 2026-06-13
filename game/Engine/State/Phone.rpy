@@ -175,6 +175,51 @@ init python:
     def visible_phone_contacts():
         return phone_visible_entries(phone_contacts.values())
 
+    def phone_validation_issues():
+        issues = []
+        seen = set()
+        for app_id in phone_app_order:
+            if app_id in seen:
+                issues.append("Duplicate phone app id '{}'.".format(app_id))
+            seen.add(app_id)
+            app = phone_app_defs.get(app_id)
+            if not app:
+                issues.append("phone_app_order references missing app '{}'.".format(app_id))
+                continue
+            if not app.get("label"):
+                issues.append("Phone app '{}' has no label.".format(app_id))
+            if app.get("requires"):
+                try:
+                    first_missing_requirement(app.get("requires"))
+                except Exception:
+                    issues.append("Phone app '{}' has an invalid requirement.".format(app_id))
+
+        note_ids = set()
+        for note in phone_notes:
+            if not isinstance(note, dict):
+                issues.append("Phone note entry is not a dict: {!r}".format(note))
+                continue
+            note_id = note.get("id")
+            if not note_id:
+                issues.append("Phone note has no id: {!r}".format(note))
+            elif note_id in note_ids:
+                issues.append("Duplicate phone note id '{}'.".format(note_id))
+            note_ids.add(note_id)
+            for row in note.get("rows", []) or []:
+                if isinstance(row, dict) and row.get("requires"):
+                    try:
+                        first_missing_requirement(row.get("requires"))
+                    except Exception:
+                        issues.append("Phone note '{}' has an invalid row requirement.".format(note_id))
+
+        for contact_id, contact in phone_contacts.items():
+            if contact.get("requires"):
+                try:
+                    first_missing_requirement(contact.get("requires"))
+                except Exception:
+                    issues.append("Phone contact '{}' has an invalid requirement.".format(contact_id))
+        return issues
+
 
 init 1 python:
     phone_app("stats", "Stats", order=10)
@@ -184,3 +229,10 @@ init 1 python:
     phone_app("tutorials", "Tutorials", order=60)
     phone_app("achievements", "Badges", order=70)
     phone_app("gallery", "Gallery", order=80, requires="system:gallery")
+
+
+init 999 python:
+    try:
+        register_project_tac_validator(phone_validation_issues)
+    except Exception:
+        pass

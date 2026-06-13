@@ -210,6 +210,8 @@ screen live_studio_editor():
     style_prefix "live_studio"
     zorder 9999
 
+    timer 1.0 repeat True action Function(live_studio.autosave_if_due)
+
     if live_studio.popup_is_open():
         key "game_menu" action Function(live_studio.close_all_popups)
         key "K_ESCAPE" action Function(live_studio.close_all_popups)
@@ -226,6 +228,10 @@ screen live_studio_editor():
         key "K_g" action Function(live_studio.set_tool_mode, "move")
         key "K_s" action Function(live_studio.set_tool_mode, "resize")
         key "K_r" action Function(live_studio.set_tool_mode, "rotate")
+        key "K_LEFT" action Function(live_studio.nudge_selected, -1, 0, False)
+        key "K_RIGHT" action Function(live_studio.nudge_selected, 1, 0, False)
+        key "K_UP" action Function(live_studio.nudge_selected, 0, -1, False)
+        key "K_DOWN" action Function(live_studio.nudge_selected, 0, 1, False)
 
     $ sw = config.screen_width
     $ sh = config.screen_height
@@ -505,8 +511,16 @@ screen live_studio_inspector():
                         spacing 5
                         text live_studio.safe_display_text(selected.get("name", kind), 52) style "live_studio_heading"
                         text "({})".format(kind.replace("_", " ")) style "live_studio_muted_text" yalign 0.5
+                    text live_studio.safe_display_text("Object: {}".format(live_studio.object_category_label(selected, kind)), 58) style "live_studio_muted_text"
+                    text live_studio.safe_display_text(live_studio.object_edit_reason(selected, kind), 72) style "live_studio_muted_text"
                     if selected.get("editability"):
                         text live_studio.safe_display_text("Editability: {}".format(selected.get("editability")), 58) style "live_studio_muted_text"
+                    if kind in ("scene_node", "ui_node"):
+                        hbox:
+                            spacing 4
+                            text "Coordinates" style "live_studio_small" yalign 0.5
+                            textbutton ("X: " + live_studio.coordinate_mode(selected, "x")) action Function(live_studio.cycle_coordinate_mode, selected.get("id"), "x") style "live_studio_compact_button"
+                            textbutton ("Y: " + live_studio.coordinate_mode(selected, "y")) action Function(live_studio.cycle_coordinate_mode, selected.get("id"), "y") style "live_studio_compact_button"
 
                     if kind == "dialogue_controller":
                         use live_studio_text_field("Say UI", selected.get("id"), "say_screen", selected.get("say_screen", "say"))
@@ -879,6 +893,11 @@ screen live_studio_history_panel():
                     text "No edits yet." style "live_studio_muted_text"
                 for entry in reversed(live_studio.history[-80:]):
                     text live_studio.safe_display_text("• {}".format(entry.get("label", entry.get("type", "Edit"))), 56) style "live_studio_muted_text"
+                if live_studio.command_journal_rows(1):
+                    add Solid("#24303e", xsize=300, ysize=1)
+                    text "Recovery Journal" style "live_studio_small"
+                    for command_row in live_studio.command_journal_rows(20):
+                        text live_studio.safe_display_text("r{} · {}".format(command_row.get("revision", 0), command_row.get("label", "Command")), 56) style "live_studio_muted_text"
 
 screen live_studio_debug_panel():
     vbox:
@@ -890,11 +909,14 @@ screen live_studio_debug_panel():
             text "Debug Snapshot" style "live_studio_small" yalign 0.5
             null width 1 xfill True
             textbutton "Copy Full Report" action Function(live_studio.copy_debug_report) style "live_studio_button"
+            textbutton "Copy Journal" action Function(live_studio.copy_text_to_clipboard, live_studio.command_journal_text()) style "live_studio_compact_button"
         $ debug_state = live_studio.resolve_frame()
         $ debug_frame = live_studio.current_frame() or {}
         $ debug_filter = live_studio.runtime.get("last_ui_capture_filter", {})
         text live_studio.safe_display_text("Frame: {} · Rev {} · {}".format(debug_frame.get("name", "None"), live_studio.runtime.get("state_revision", 0), live_studio.runtime.get("last_invalidation_reason", "no invalidation recorded")), 74) style "live_studio_muted_text"
         text live_studio.safe_display_text("Capture: {} UI screens · {} filtered · serial {}".format(debug_filter.get("captured", len(debug_state.get("ui_screens", []))), debug_filter.get("filtered", 0), live_studio.runtime.get("capture_serial", 0)), 74) style "live_studio_muted_text"
+        $ lifecycle = live_studio.project_lifecycle_summary()
+        text live_studio.safe_display_text("Project r{} · exported r{} · journal {} · snapshots {}".format(lifecycle.get("revision", 0), lifecycle.get("last_exported_revision", 0), lifecycle.get("journal_entries", 0), lifecycle.get("snapshots", 0)), 74) style "live_studio_muted_text"
         hbox:
             spacing 5
             textbutton "Refresh Views" action [Function(live_studio.invalidate_view_caches, False, "manual debugger refresh"), Function(live_studio.restart)] style "live_studio_compact_button"
@@ -931,6 +953,14 @@ screen live_studio_settings_panel():
             spacing 5
             textbutton ("Grid On" if live_studio.project_setting("grid_enabled", False) else "Grid Off") action Function(live_studio.toggle_project_setting, "grid_enabled") selected live_studio.project_setting("grid_enabled", False) style "live_studio_compact_button"
             textbutton ("Bounds On" if live_studio.project_setting("show_all_bounds", False) else "Bounds Off") action Function(live_studio.toggle_project_setting, "show_all_bounds") selected live_studio.project_setting("show_all_bounds", False) style "live_studio_compact_button"
+        add Solid("#24303e", xsize=402, ysize=1)
+        text "Project Safety" style "live_studio_small"
+        hbox:
+            spacing 5
+            textbutton ("Autosave On" if live_studio.project_setting("autosave_enabled", True) else "Autosave Off") action Function(live_studio.toggle_project_setting, "autosave_enabled") selected live_studio.project_setting("autosave_enabled", True) style "live_studio_compact_button"
+            textbutton ("Recovery On" if live_studio.project_setting("recovery_enabled", True) else "Recovery Off") action Function(live_studio.toggle_project_setting, "recovery_enabled") selected live_studio.project_setting("recovery_enabled", True) style "live_studio_compact_button"
+        textbutton "Create Project Snapshot" action Function(live_studio.create_project_snapshot) style "live_studio_button"
+        textbutton ("Show compatibility fallbacks in Debugger" if live_studio.project_setting("diagnostics_compatibility_fallbacks", False) else "Hide compatibility fallbacks in Debugger") action Function(live_studio.toggle_project_setting, "diagnostics_compatibility_fallbacks") selected live_studio.project_setting("diagnostics_compatibility_fallbacks", False) style "live_studio_button"
         add Solid("#24303e", xsize=402, ysize=1)
         text "Runtime UI Capture" style "live_studio_small"
         text "Only active, rendered gameplay screens are captured. Live Studio always excludes itself." style "live_studio_muted_text"
@@ -1198,13 +1228,16 @@ screen live_studio_extension_workspace():
                             for command in live_studio.filtered_extension_commands(ext):
                                 button:
                                     style "live_studio_tool_button"
-                                    action (Confirm("This command can write to source files after creating a backup. Continue?", Function(live_studio.run_extension_command, ext.get("id"), command.get("id"))) if command.get("writes") else Function(live_studio.run_extension_command, ext.get("id"), command.get("id")))
+                                    sensitive command.get("_enabled", True)
+                                    action (Confirm("This command writes source through a validated transaction. Continue?", Function(live_studio.run_extension_command, ext.get("id"), command.get("id"))) if command.get("writes") else Function(live_studio.run_extension_command, ext.get("id"), command.get("id")))
                                     xfill True
                                     vbox:
                                         spacing 2
-                                        text (command.get("title", command.get("id", "Command")) + ("  [writes]" if command.get("writes") else "")) style "live_studio_button_text"
+                                        text (command.get("title", command.get("id", "Command")) + ("  [writes]" if command.get("writes") else ("  [plans source]" if command.get("plans_write") else ""))) style "live_studio_button_text"
                                         if command.get("description"):
                                             text live_studio.safe_display_text(command.get("description"), 42) style "live_studio_muted_text"
+                                        if not command.get("_enabled", True):
+                                            text live_studio.safe_display_text(command.get("_disabled_reason", "Unavailable"), 42) style "live_studio_muted_text"
                             add Solid("#24303e", xsize=290, ysize=1)
                             text "Registry Snapshot" style "live_studio_heading"
                             for row in live_studio.extension_summary_rows(ext):
@@ -1259,7 +1292,12 @@ screen live_studio_extension_workspace():
                             text live_studio.extension_preview_title() style "live_studio_heading" yalign 0.5
                             null width 1 xfill True
                             textbutton "Copy" action Function(live_studio.copy_extension_preview) sensitive bool(live_studio.extension_preview_text()) style "live_studio_compact_button"
-                            textbutton "Apply to File" action Confirm("Back up the selected file and append the generated preview?", Function(live_studio.apply_extension_preview)) sensitive bool(live_studio.extension_preview_text() and live_studio.selected_extension_file(ext)) style "live_studio_compact_button"
+                            $ preview_apply_enabled, preview_apply_reason = live_studio.extension_preview_apply_status(ext)
+                            textbutton "Apply to File" action Confirm("Back up the selected file and append this generated code preview?", Function(live_studio.apply_extension_preview)) sensitive preview_apply_enabled style "live_studio_compact_button"
+                            if ext.get("id") == "project_tac" and hasattr(live_studio, "pt_pending_change_status"):
+                                $ plan_apply_enabled, plan_apply_reason = live_studio.pt_pending_change_status()
+                                textbutton "Apply Planned Changes" action Confirm("Apply every file in the reviewed Project Tac source plan as one rollback-capable transaction?", Function(live_studio.pt_apply_pending_change_plan)) sensitive plan_apply_enabled style "live_studio_button"
+                                textbutton "Discard Plan" action Function(live_studio.pt_discard_pending_change_plan) sensitive bool(live_studio.pt_pending_change_plan()) style "live_studio_compact_button"
                         viewport:
                             mousewheel True
                             draggable True
@@ -1272,7 +1310,11 @@ screen live_studio_extension_workspace():
                                 if live_studio.extension_preview_text():
                                     text live_studio.safe_display_text(live_studio.extension_preview_text(), escape_interpolation=False) style "live_studio_small"
                                 else:
-                                    text "Run a command to generate editable Project Tac code or validation notes." style "live_studio_muted_text"
+                                    text "Run a command to generate Project Tac code, reports, or validation notes." style "live_studio_muted_text"
+                                if not preview_apply_enabled and preview_apply_reason:
+                                    text live_studio.safe_display_text(preview_apply_reason, 88) style "live_studio_muted_text"
+                                if ext.get("id") == "project_tac" and hasattr(live_studio, "pt_pending_change_status") and not plan_apply_enabled and plan_apply_reason:
+                                    text live_studio.safe_display_text(plan_apply_reason, 88) style "live_studio_muted_text"
 
 
 screen live_studio_dialogue_workspace():
@@ -1284,8 +1326,8 @@ screen live_studio_dialogue_workspace():
             xalign 0.5
             yalign 0.5
             text "This frame has no Dialogue object." style "live_studio_heading"
-            text "Dialogue belongs to a Scene; Say and Choice are separate UI screens." style "live_studio_muted_text"
-            textbutton "Add Dialogue to Dialogue Scene" action Function(live_studio.ensure_dialogue_controller) style "live_studio_button"
+            text "Dialogue is frame logic; Say and Choice are separate presentation screens." style "live_studio_muted_text"
+            textbutton "Add Dialogue Controller" action Function(live_studio.ensure_dialogue_controller) style "live_studio_button"
     else:
         vbox:
             spacing 5
@@ -1450,9 +1492,10 @@ screen live_studio_export_workspace():
             textbutton "screens.rpy" action Function(live_studio.set_script_export_section, "screens") selected export_section == "screens" style "live_studio_tab"
             textbutton "helpers.rpy" action Function(live_studio.set_script_export_section, "helpers") selected export_section == "helpers" style "live_studio_tab"
             null width 1 xfill True
-            textbutton "Regenerate" action Function(live_studio.generate_exports) style "live_studio_compact_button"
+            textbutton "Regenerate" action Function(live_studio.regenerate_export_plan) style "live_studio_compact_button"
             textbutton "Copy Current" action Function(live_studio.copy_export, export_section) style "live_studio_compact_button"
-            textbutton "Export Files" action Function(live_studio.export_files) style "live_studio_compact_button"
+            textbutton "Export Changed" action Function(live_studio.export_files) style "live_studio_compact_button"
+        text live_studio.safe_display_text(live_studio.export_plan_summary(), 180) style "live_studio_muted_text"
         viewport:
             mousewheel True
             draggable True
@@ -1486,15 +1529,29 @@ screen live_studio_project_popup():
                 textbutton "Close" action Function(live_studio.close_all_popups) style "live_studio_compact_button"
             text live_studio.safe_display_text(live_studio.project_name(), 42) style "live_studio_muted_text"
             textbutton "Save Project" action Function(live_studio.save_project_from_ui) style "live_studio_button"
+            textbutton "Create Snapshot" action Function(live_studio.create_project_snapshot) style "live_studio_button"
+            $ recovery_info = live_studio.recovery_session_info()
+            if recovery_info:
+                text live_studio.safe_display_text("Recovery: {} · revision {}".format(recovery_info.get("project_name", "Project"), recovery_info.get("project_revision", 0)), 54) style "live_studio_muted_text"
+                hbox:
+                    spacing 5
+                    textbutton "Restore Recovery" action Confirm("Replace the in-memory project with the recovery session?", Function(live_studio.restore_recovery_session)) style "live_studio_compact_button"
+                    textbutton "Discard" action Function(live_studio.discard_recovery_session) style "live_studio_compact_button"
             textbutton "New Blank Project" action Confirm("Replace the current in-memory project with a blank project?", Function(live_studio.new_blank_project_from_ui)) style "live_studio_button"
             textbutton "Capture Running Game as New Project" action Confirm("Replace the current in-memory project with a fresh runtime capture?", Function(live_studio.new_capture_project_from_ui)) style "live_studio_button"
+            $ snapshot_rows = live_studio.project_snapshot_rows()
+            if snapshot_rows:
+                add Solid("#24303e", xsize=306, ysize=1)
+                text "Project Snapshots" style "live_studio_small"
+                for snapshot_row in snapshot_rows[:5]:
+                    textbutton live_studio.safe_display_text(snapshot_row.get("label", "Snapshot"), 38) action Confirm("Restore this project snapshot?", Function(live_studio.restore_project_snapshot, snapshot_row.get("path"))) style "live_studio_tree_button"
             add Solid("#24303e", xsize=306, ysize=1)
             text "Saved Projects" style "live_studio_small"
             viewport:
                 mousewheel True
                 draggable True
                 scrollbars "vertical"
-                ymaximum 260
+                ymaximum 190
                 vbox:
                     spacing 3
                     xfill True
@@ -1503,6 +1560,11 @@ screen live_studio_project_popup():
                         text "No saved Live Studio projects yet." style "live_studio_muted_text"
                     for project_path in project_paths:
                         textbutton live_studio.safe_display_text(live_studio.project_file_label(project_path), 38) action Function(live_studio.load_project_from_ui, project_path) style "live_studio_tree_button"
+            if live_studio.export_history_rows(1):
+                add Solid("#24303e", xsize=306, ysize=1)
+                text "Recent Exports" style "live_studio_small"
+                for export_row in live_studio.export_history_rows(5):
+                    text live_studio.safe_display_text("{} · r{} · {} file(s)".format(export_row.get("status", "export"), export_row.get("project_revision", 0), len(export_row.get("files", []))), 46) style "live_studio_muted_text"
 
 screen live_studio_settings_popup():
     button:
@@ -1526,7 +1588,13 @@ screen live_studio_settings_popup():
                 null width 1 xfill True
                 textbutton "Close" action Function(live_studio.close_all_popups) style "live_studio_compact_button"
             add Solid("#24303e", xsize=402, ysize=1)
-            use live_studio_settings_panel
+            viewport:
+                mousewheel True
+                draggable True
+                scrollbars "vertical"
+                xfill True
+                yfill True
+                use live_studio_settings_panel
 
 
 screen live_studio_future_popup():

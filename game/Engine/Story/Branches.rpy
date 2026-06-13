@@ -53,10 +53,16 @@ init -3 python:
         # title     - short label shown in the visualizer
         # choices   - {choice_id: {"title": ..., "label": ...}}
         # parent    - branch_id this one is downstream of, for the tree view
+        normalized_choices = {}
+        for choice_id, data in (choices or {}).items():
+            if isinstance(data, dict):
+                normalized_choices[str(choice_id)] = dict(data)
+            else:
+                normalized_choices[str(choice_id)] = {"title": str(data), "label": None}
         branch_defs[branch_id] = {
             "title":   title,
             "parent":  parent,
-            "choices": dict(choices),
+            "choices": normalized_choices,
         }
 
 
@@ -76,8 +82,22 @@ init python:
 
     def take_branch(branch_id, choice_id):
         # Record which choice was taken at this branch point.
+        if branch_id not in branch_defs:
+            try:
+                renpy.notify("Unknown branch: " + str(branch_id))
+            except Exception:
+                pass
+            return False
+        choice_id = str(choice_id)
+        if choice_id not in (branch_defs.get(branch_id, {}).get("choices") or {}):
+            try:
+                renpy.notify("Unknown branch choice: {}.{}".format(branch_id, choice_id))
+            except Exception:
+                pass
+            return False
         current_branch_path[branch_id] = choice_id
         persistent.branches_visited.add((branch_id, choice_id))
+        return True
 
     def has_taken_branch(branch_id, choice_id=None):
         # If choice_id is None, returns True iff the player has taken ANY
@@ -112,6 +132,49 @@ init python:
         out = [(bid, branch_defs[bid], depth_of(bid)) for bid in branch_defs]
         out.sort(key=lambda t: (t[2], t[0]))
         return out
+
+    def branch_validation_issues():
+        issues = []
+        for branch_id, data in (globals().get("branch_defs", {}) or {}).items():
+            if not isinstance(data, dict):
+                issues.append("Branch '{}' should be a dictionary definition.".format(branch_id))
+                continue
+            if not data.get("title"):
+                issues.append("Branch '{}' is missing title.".format(branch_id))
+            parent = data.get("parent")
+            if parent and parent not in branch_defs:
+                issues.append("Branch '{}' references missing parent '{}'.".format(branch_id, parent))
+            choices = data.get("choices") or {}
+            if not isinstance(choices, dict) or not choices:
+                issues.append("Branch '{}' needs at least one choice.".format(branch_id))
+                continue
+            for choice_id, choice in choices.items():
+                if not isinstance(choice, dict):
+                    issues.append("Branch '{}.{}' choice should be a dictionary.".format(branch_id, choice_id))
+                    continue
+                if not choice.get("title"):
+                    issues.append("Branch '{}.{}' is missing title.".format(branch_id, choice_id))
+                label = choice.get("label")
+                if label:
+                    try:
+                        if not renpy.has_label(label):
+                            issues.append("Branch '{}.{}' points to missing label '{}'.".format(branch_id, choice_id, label))
+                    except Exception:
+                        pass
+                reqs = choice.get("requires")
+                if reqs:
+                    try:
+                        first_missing_requirement(reqs)
+                    except Exception:
+                        issues.append("Branch '{}.{}' has invalid requirements '{}'.".format(branch_id, choice_id, reqs))
+        return issues
+
+
+init 999 python:
+    try:
+        register_project_tac_validator(branch_validation_issues)
+    except Exception:
+        pass
 
 
 # =============================================================================

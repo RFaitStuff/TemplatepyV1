@@ -506,3 +506,161 @@ init python:
         char = store._last_speaker
         if char:
             choose(char, idx)
+
+
+    # ---- validation ------------------------------------------------------
+    def _character_number(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+    def _character_requirement_valid(requirements):
+        if requirements in (None, "", {}, [], ()):
+            return True
+        try:
+            return first_missing_requirement(requirements) is None
+        except Exception:
+            return False
+
+    def _schedule_locations_from_value(value):
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, (list, tuple, set)):
+            out = []
+            for item in value:
+                out.extend(_schedule_locations_from_value(item))
+            return out
+        if isinstance(value, dict):
+            out = []
+            for key in ("location", "loc", "to"):
+                out.extend(_schedule_locations_from_value(value.get(key)))
+            for key in ("locations", "choices", "options"):
+                out.extend(_schedule_locations_from_value(value.get(key)))
+            for key in ("default", "fallback"):
+                out.extend(_schedule_locations_from_value(value.get(key)))
+            for rule in value.get("rules", []) or []:
+                out.extend(_schedule_locations_from_value(rule))
+            return out
+        return []
+
+    def character_validation_issues():
+        issues = []
+        locations_data = globals().get("locations", {}) or {}
+        schedules = globals().get("character_schedules", {}) or {}
+        speakers = globals().get("character_speakers", {}) or {}
+        character_data = globals().get("character_stats", {}) or {}
+        known_locations = set(locations_data.keys())
+        known_chars = set(character_data.keys()) | set(speakers.keys()) | set(schedules.keys()) | set((globals().get("character_fact_defs", {}) or {}).keys())
+        known_times = set(("day", "afternoon", "evening", "night", "midnight", "morning"))
+
+        for stat_id, data in (globals().get("CHARACTER_STAT_DEFS", {}) or {}).items():
+            if not isinstance(data, dict):
+                issues.append("Character stat '{}' should be a dictionary definition.".format(stat_id))
+                continue
+            if not _character_number(data.get("default", 0)):
+                issues.append("Character stat '{}' has a non-numeric default.".format(stat_id))
+            if data.get("min") is not None and not _character_number(data.get("min")):
+                issues.append("Character stat '{}' has a non-numeric min.".format(stat_id))
+            if data.get("max") is not None and not _character_number(data.get("max")):
+                issues.append("Character stat '{}' has a non-numeric max.".format(stat_id))
+            if data.get("min") is not None and data.get("max") is not None and _character_number(data.get("min")) and _character_number(data.get("max")) and data.get("max") < data.get("min"):
+                issues.append("Character stat '{}' has max lower than min.".format(stat_id))
+
+        for mood_id, data in (globals().get("MOOD_DEFS", {}) or {}).items():
+            if not isinstance(data, dict):
+                issues.append("Mood '{}' should be a dictionary definition.".format(mood_id))
+                continue
+            if not _character_number(data.get("default", 0)):
+                issues.append("Mood '{}' has a non-numeric default.".format(mood_id))
+            if not _character_number(data.get("priority", 0)):
+                issues.append("Mood '{}' has a non-numeric priority.".format(mood_id))
+            for limit_key in ("min", "max"):
+                if data.get(limit_key) is not None and not _character_number(data.get(limit_key)):
+                    issues.append("Mood '{}' has a non-numeric {}.".format(mood_id, limit_key))
+
+        known_moods = set((globals().get("MOOD_DEFS", {}) or {}).keys())
+        for mood_id, rows in (globals().get("MOOD_INCOMPAT", {}) or {}).items():
+            if mood_id not in known_moods:
+                issues.append("Mood incompatibility references unknown mood '{}'.".format(mood_id))
+            for other_id, amount in (rows or {}).items():
+                if other_id not in known_moods:
+                    issues.append("Mood incompatibility '{} -> {}' references an unknown mood.".format(mood_id, other_id))
+                if not _character_number(amount):
+                    issues.append("Mood incompatibility '{} -> {}' has a non-numeric amount.".format(mood_id, other_id))
+
+        for stat_id, data in (globals().get("PLAYER_STAT_DEFS", {}) or {}).items():
+            if not isinstance(data, dict):
+                issues.append("Player stat '{}' should be a dictionary definition.".format(stat_id))
+                continue
+            if not _character_number(data.get("default", 0)):
+                issues.append("Player stat '{}' has a non-numeric default.".format(stat_id))
+            if data.get("min") is not None and not _character_number(data.get("min")):
+                issues.append("Player stat '{}' has a non-numeric min.".format(stat_id))
+            if data.get("max") is not None and not _character_number(data.get("max")):
+                issues.append("Player stat '{}' has a non-numeric max.".format(stat_id))
+            if data.get("aliases") is not None and not isinstance(data.get("aliases"), (list, tuple, set)):
+                issues.append("Player stat '{}' aliases should be a list.".format(stat_id))
+
+        for cid in sorted(known_chars):
+            if cid not in speakers:
+                issues.append("Character '{}' has no speaker in character_speakers.".format(cid))
+            if cid not in character_data:
+                issues.append("Character '{}' has no character_stats entry.".format(cid))
+            if cid not in schedules:
+                issues.append("Character '{}' has no schedule entry.".format(cid))
+
+        for cid, stats in character_data.items():
+            if not isinstance(stats, dict):
+                issues.append("character_stats['{}'] should be a dictionary.".format(cid))
+                continue
+            for stat_id in stats.keys():
+                if stat_id in ("moods", "reactions", "statuses"):
+                    continue
+                if stat_id not in (globals().get("CHARACTER_STAT_DEFS", {}) or {}):
+                    issues.append("Character '{}' uses unknown stat '{}'.".format(cid, stat_id))
+
+        for cid, rows in schedules.items():
+            if not isinstance(rows, dict):
+                issues.append("Schedule for '{}' should be a dictionary.".format(cid))
+                continue
+            for time_id, value in rows.items():
+                if str(time_id) not in known_times:
+                    issues.append("Schedule for '{}' uses unknown time bucket '{}'.".format(cid, time_id))
+                for loc_id in _schedule_locations_from_value(value):
+                    if loc_id and loc_id not in known_locations:
+                        issues.append("Schedule for '{}' at '{}' points to missing location '{}'.".format(cid, time_id, loc_id))
+
+        for cid, rows in (globals().get("character_fact_defs", {}) or {}).items():
+            seen = set()
+            for index_value, fact in enumerate(rows or []):
+                if not isinstance(fact, dict):
+                    issues.append("Character fact {}[{}] should be a dictionary.".format(cid, index_value))
+                    continue
+                fid = fact.get("id")
+                if not fid:
+                    issues.append("Character fact {}[{}] is missing id.".format(cid, index_value))
+                elif fid in seen:
+                    issues.append("Character '{}' has duplicate fact id '{}'.".format(cid, fid))
+                seen.add(fid)
+                if not fact.get("label"):
+                    issues.append("Character fact '{}.{}' is missing label.".format(cid, fid or index_value))
+
+        player_stats = set((globals().get("PLAYER_STAT_DEFS", {}) or {}).keys())
+        for perk_id, data in (globals().get("perk_defs", {}) or {}).items():
+            if not isinstance(data, dict):
+                issues.append("Perk '{}' should be a dictionary definition.".format(perk_id))
+                continue
+            stat_id = data.get("stat")
+            if stat_id and stat_id not in player_stats:
+                issues.append("Perk '{}' references unknown player stat '{}'.".format(perk_id, stat_id))
+            if not _character_requirement_valid(data.get("requires")):
+                issues.append("Perk '{}' has invalid requirements '{}'.".format(perk_id, data.get("requires")))
+
+        return issues
+
+
+init 999 python:
+    try:
+        register_project_tac_validator(character_validation_issues)
+    except Exception:
+        pass

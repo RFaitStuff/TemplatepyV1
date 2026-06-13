@@ -30,7 +30,7 @@ init -855 python in live_studio:
         def enter(self):
             return None
 
-    def register_extension(ext_id, title=None, description="", commands=None, summary=None, files=None, file_preview=None, apply_preview=None, available=None, order=100):
+    def register_extension(ext_id, title=None, description="", commands=None, summary=None, files=None, file_preview=None, apply_preview=None, available=None, order=100, api_version=1, capabilities=None, requirements=None, capability_provider=None):
         ext_id = safe_identifier(ext_id, "extension")
         data = extension_defs.setdefault(ext_id, {})
         data.update({
@@ -44,6 +44,10 @@ init -855 python in live_studio:
             "apply_preview": apply_preview,
             "available": available,
             "order": int(order or 100),
+            "api_version": int(api_version or 1),
+            "capabilities": dict(capabilities or {}),
+            "requirements": dict(requirements or {}),
+            "capability_provider": capability_provider,
         })
         return data
 
@@ -185,7 +189,7 @@ init -855 python in live_studio:
         file_id = selected_extension_file(ext)
         if not ext or not file_id:
             return None
-        set_extension_preview("File: " + str(file_id), extension_file_preview(ext))
+        set_extension_preview("File: " + str(file_id), extension_file_preview(ext), kind="file", applyable=False)
         return None
 
     def extension_summary_rows(ext):
@@ -199,9 +203,13 @@ init -855 python in live_studio:
             log_diagnostic("warning", "Extension summary failed", {"extension": (ext or {}).get("id"), "error": str(exc)})
             return [{"label": "Summary error", "value": str(exc)}]
 
-    def set_extension_preview(title, text):
+    def set_extension_preview(title, text, kind="text", applyable=False, metadata=None):
         runtime["extension_preview_title"] = str(title or "Preview")
         runtime["extension_preview_text"] = str(text or "")
+        runtime["extension_preview_kind"] = str(kind or "text")
+        runtime["extension_preview_applyable"] = bool(applyable)
+        runtime["extension_preview_metadata"] = json_safe(metadata or {})
+        runtime["extension_preview_generation"] = int(runtime.get("extension_preview_generation", 0)) + 1
         restart()
 
     def extension_preview_title():
@@ -217,11 +225,27 @@ init -855 python in live_studio:
                 log_diagnostic("info", "Extension preview copied to clipboard.")
         return None
 
+
+    def extension_preview_apply_status(ext=None):
+        ext = ext or active_extension()
+        if not ext:
+            return False, "No extension is active."
+        if not runtime.get("extension_preview_applyable", False):
+            return False, "This preview is reference/report content. Use a typed Write command for source changes."
+        if not selected_extension_file(ext):
+            return False, "Select a writable project file first."
+        if (ext or {}).get("apply_preview") is None:
+            return False, "This extension does not support raw preview application."
+        return True, ""
+
     def apply_extension_preview():
         ext = active_extension()
         text = extension_preview_text()
         fn = (ext or {}).get("apply_preview")
-        if not ext or not text or fn is None:
+        enabled, reason = extension_preview_apply_status(ext)
+        if not ext or not text or fn is None or not enabled:
+            if reason:
+                set_extension_preview("Apply Unavailable", reason, kind="status", applyable=False)
             return None
         try:
             result = fn(selected_extension_file(ext), text)
@@ -233,19 +257,66 @@ init -855 python in live_studio:
             set_extension_preview("Apply Error", str(exc))
             return None
 
+    def extension_capabilities(ext):
+        ext = ext or {}
+        provider = ext.get("capability_provider")
+        if provider is not None:
+            try:
+                values = provider()
+                if isinstance(values, dict):
+                    return values
+            except Exception as exc:
+                log_diagnostic("warning", "Extension capability provider failed", {"extension": ext.get("id")}, system="extensions", operation="capabilities", exception=exc)
+        capabilities = ext.get("capabilities", {}) or {}
+        return capabilities if isinstance(capabilities, dict) else {}
+
+    def _extension_capability_value(ext, name):
+        capabilities = extension_capabilities(ext)
+        value = capabilities.get(name, 0)
+        try:
+            return int(value or 0)
+        except Exception:
+            return 0
+
+    def extension_command_status(ext, command):
+        if not isinstance(command, dict):
+            return False, "Invalid command definition."
+        minimum_api = int(command.get("extension_api", 1) or 1)
+        if int(globals().get("EXTENSION_API_VERSION", 1)) < minimum_api:
+            return False, "Requires Live Studio extension API {}.".format(minimum_api)
+        requirements = command.get("requires", {}) or {}
+        for capability, minimum in requirements.items():
+            try:
+                minimum = int(minimum or 0)
+            except Exception:
+                minimum = 0
+            actual = _extension_capability_value(ext, capability)
+            if actual < minimum:
+                return False, "Requires {} capability {} (available {}).".format(capability, minimum, actual)
+        available = command.get("available")
+        if available is not None:
+            try:
+                result = available()
+                if isinstance(result, tuple):
+                    if not bool(result[0]):
+                        return False, str(result[1] if len(result) > 1 else "Unavailable")
+                elif not bool(result):
+                    return False, str(command.get("unavailable_reason") or "Unavailable in this project.")
+            except Exception as exc:
+                log_diagnostic("warning", "Extension command availability failed", {"extension": (ext or {}).get("id"), "command": command.get("id")}, system="extensions", operation="command_status", exception=exc)
+                return False, "Availability check failed: {}".format(exc)
+        return True, ""
+
     def extension_commands(ext):
         out = []
         for command in (ext or {}).get("commands", []):
             if not isinstance(command, dict):
                 continue
-            available = command.get("available")
-            if available is not None:
-                try:
-                    if not available():
-                        continue
-                except Exception:
-                    continue
-            out.append(command)
+            row = dict(command)
+            enabled, reason = extension_command_status(ext, row)
+            row["_enabled"] = enabled
+            row["_disabled_reason"] = reason
+            out.append(row)
         return out
 
     def extension_command_categories(ext):
@@ -278,13 +349,20 @@ init -855 python in live_studio:
         for command in extension_commands(ext):
             if command.get("id") != command_id:
                 continue
+            enabled, reason = extension_command_status(ext, command)
+            if not enabled:
+                set_extension_preview("Command Unavailable", reason)
+                return None
             fn = command.get("action")
             if fn is None:
                 return None
             try:
+                preview_generation = int(runtime.get("extension_preview_generation", 0))
                 result = fn()
-                if isinstance(result, str):
-                    set_extension_preview(command.get("title", "Preview"), result)
+                # Builders such as Project Tac's typed preview helper may have
+                # already supplied richer preview metadata. Do not overwrite it.
+                if isinstance(result, str) and int(runtime.get("extension_preview_generation", 0)) == preview_generation:
+                    set_extension_preview(command.get("title", "Preview"), result, kind=command.get("preview_kind", "text"), applyable=bool(command.get("preview_applyable", False)), metadata={"command": command_id})
                 return result
             except Exception as exc:
                 log_diagnostic("error", "Extension command failed", {"extension": ext_id, "command": command_id, "error": str(exc)})

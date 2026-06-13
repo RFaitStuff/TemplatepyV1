@@ -280,3 +280,7 @@ init 999 python:
                 config.label_callbacks.append(_gallery_label_reached)
     except Exception:
         pass
+    try:
+        register_project_tac_validator(gallery_validation_issues)
+    except Exception:
+        pass
